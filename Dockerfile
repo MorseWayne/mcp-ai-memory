@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency files first (for better caching)
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 
 # Install uv for faster package installation
 RUN pip install uv

@@ -22,6 +22,7 @@ services:
 
   # MCP AI Memory 服务
   mcp-ai-memory:
+    image: mcp-ai-memory:latest
     build:
       context: .
       dockerfile: Dockerfile
