@@ -51,4 +51,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Default command - can be overridden for stdio mode
-CMD ["python", "-m", "mem0_local_mcp.server"]
+CMD ["python", "-m", "mcp_ai_memory.server"]

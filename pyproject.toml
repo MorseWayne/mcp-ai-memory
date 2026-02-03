@@ -52,10 +52,10 @@ dev = [
 Repository = "https://github.com/MorseWayne/mcp-ai-memory"
 
 [project.scripts]
-mcp-ai-memory = "mem0_local_mcp.server:main"
+mcp-ai-memory = "mcp_ai_memory.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mem0_local_mcp"]
+packages = ["src/mcp_ai_memory"]
 
 [tool.ruff]
 target-version = "py310"

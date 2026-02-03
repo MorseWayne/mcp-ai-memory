@@ -55,10 +55,10 @@
 
    ```bash
    # SSE 模式
-   TRANSPORT=sse uv run python -m mem0_local_mcp.server
+   TRANSPORT=sse uv run python -m mcp_ai_memory.server
 
    # 或 stdio 模式
-   TRANSPORT=stdio uv run python -m mem0_local_mcp.server
+   TRANSPORT=stdio uv run python -m mcp_ai_memory.server
    ```
 
 ### 方式二：使用 Docker
@@ -333,7 +333,7 @@ DATABASE_URL=postgresql://user:password@localhost:5432/mem0
 3. **启动服务**:
 
    ```bash
-   python -m mem0_local_mcp.server
+   python -m mcp_ai_memory.server
    ```
 
 ## License
