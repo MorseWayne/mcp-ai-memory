@@ -61,24 +61,14 @@
    TRANSPORT=stdio uv run python -m mcp_ai_memory.server
    ```
 
-### 方式二：使用快速启动脚本（推荐）
-
-一键启动 Qdrant 和 MCP 服务：
+### 方式二：使用 Docker Compose（推荐生产）
 
 ```bash
-./quickstart.sh
-```
+# 仅启动 Qdrant 服务
+docker compose up -d qdrant
 
-然后按菜单选择启动方案。
-
-### 方式三：使用 Docker Compose（推荐生产）
-
-```bash
-# 启动 Qdrant 服务
-docker-compose up -d qdrant
-
-# 或启动完整的 Docker Compose（包括 MCP 服务）
-docker-compose -f docker-compose.full.yml up -d
+# 或启动完整服务（包括 MCP 服务和 Qdrant）
+docker compose up -d
 ```
 
 详细部署指南见 [DEPLOYMENT.md](DEPLOYMENT.md)。
@@ -153,8 +143,8 @@ QDRANT_COLLECTION=mem0_memories
 **使用 Docker 快速启动 Qdrant 服务**：
 
 ```bash
-# 方式 1：使用 docker-compose（推荐）
-docker-compose up -d qdrant
+# 方式 1：使用 docker compose（推荐）
+docker compose up -d qdrant
 
 # 方式 2：直接使用 docker run
 docker run -d \
@@ -165,7 +155,7 @@ docker run -d \
   qdrant/qdrant:latest
 ```
 
-访问 Qdrant 管理界面：http://localhost:6333/dashboard
+访问 Qdrant 管理界面：<http://localhost:6333/dashboard>
 
 #### PostgreSQL + pgvector
 
@@ -183,20 +173,23 @@ CHROMA_PATH=./chroma_data
 
 ## 使用 Docker Compose 快速启动
 
-项目提供了 `docker-compose.yml`，可以一键启动 Qdrant 服务：
+项目提供了 `docker-compose.yml`，可以一键启动服务：
 
 ```bash
-# 启动 Qdrant 服务
-docker-compose up -d qdrant
+# 启动所有服务（包括 MCP 服务和 Qdrant）
+docker compose up -d
+
+# 仅启动 Qdrant 服务
+docker compose up -d qdrant
 
 # 查看服务状态
-docker-compose ps
+docker compose ps
 
 # 停止服务
-docker-compose down
+docker compose down
 
 # 清理所有数据（包括数据卷）
-docker-compose down -v
+docker compose down -v
 ```
 
 **配置文件**（`.env`）中使用 Qdrant 服务器：
@@ -421,7 +414,7 @@ stdio 模式无需预先启动服务，客户端会自动拉起进程。
 1. **启动 Qdrant 服务**:
 
    ```bash
-   docker-compose up -d qdrant
+   docker compose up -d qdrant
    ```
 
 2. **配置 .env**:
@@ -457,9 +450,8 @@ stdio 模式无需预先启动服务，客户端会自动拉起进程。
 创建完整的多容器环境（包括 MCP 服务和 Qdrant）：
 
 ```bash
-# 编辑 docker-compose.yml 添加 MCP 服务
-# 然后启动所有服务
-docker-compose up -d
+# 启动所有服务
+docker compose up -d
 ```
 
 ## 故障排查
@@ -469,6 +461,7 @@ docker-compose up -d
 如果看到错误：`Storage folder is already accessed by another instance of Qdrant client`
 
 **解决方案**：
+
 - 切换到 Qdrant 服务器模式（参考"方案 B"）
 - 或者关闭所有其他访问同一数据文件的进程
 
@@ -481,7 +474,7 @@ pkill -f mem0
 rm -rf ./mem0_data
 
 # 重新启动
-docker-compose up -d qdrant
+docker compose up -d qdrant
 TRANSPORT=sse uv run python -m mcp_ai_memory.server
 ```
 
@@ -492,8 +485,9 @@ TRANSPORT=sse uv run python -m mcp_ai_memory.server
 **排查步骤**：
 
 1. 运行诊断脚本：
+
    ```bash
-   uv run python diagnose_api.py
+   uv run python tests/diagnose_api.py
    ```
 
 2. 检查 `.env` 配置：
@@ -502,6 +496,7 @@ TRANSPORT=sse uv run python -m mcp_ai_memory.server
    - 网络连接是否正常
 
 3. 测试 API 连接：
+
    ```bash
    curl -X POST https://api.vectorengine.ai/v1/chat/completions \
      -H "Authorization: Bearer sk-xxx" \
