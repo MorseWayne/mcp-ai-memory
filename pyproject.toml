@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-ai-memory"
+version = "0.1.0"
+description = "MCP server for local long-term memory storage with multiple LLM providers"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+keywords = [
+    "mcp",
+    "memory",
+    "agents",
+    "llm",
+    "local",
+    "ollama",
+    "openai",
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "mcp[cli]>=1.3.0",
+    "mem0ai>=0.1.88",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.28.0",
+    "qdrant-client>=1.7.0",
+]
+
+[project.optional-dependencies]
+postgres = ["vecs>=0.4.5"]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.7.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Repository = "https://github.com/MorseWayne/mcp-ai-memory"
+
+[project.scripts]
+mcp-ai-memory = "mem0_local_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mem0_local_mcp"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.mypy]
+python_version = "3.10"
+strict = true

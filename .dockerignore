@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local data (will be mounted as volumes)
+mem0_data/
+chroma_data/
+*.db
+
+# Environment files (use --env-file instead)
+.env
+.env.local
+
+# Documentation
+*.md
+!README.md
+
+# Tests
+tests/
+test_*.py
