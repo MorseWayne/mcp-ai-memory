@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 import os
 
 # 加载 .env 配置
-env_path = Path(__file__).parent / ".env"
+env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(env_path)
 
 def get_env(key: str, default=None):
