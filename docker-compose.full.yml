@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # Qdrant 向量数据库
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant-vectordb
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-storage:/qdrant/storage
+    environment:
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MCP AI Memory 服务
+  mcp-ai-memory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-ai-memory
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    ports:
+      - "8050:8050"
+    environment:
+      TRANSPORT: sse
+      HOST: 0.0.0.0
+      PORT: 8050
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMS: ${EMBEDDING_DIMS:-1536}
+      VECTOR_STORE_PROVIDER: qdrant
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-mem0_memories}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8050/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  qdrant-storage:
+    driver: local

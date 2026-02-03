@@ -61,46 +61,27 @@
    TRANSPORT=stdio uv run python -m mcp_ai_memory.server
    ```
 
-### 方式二：使用 Docker
+### 方式二：使用快速启动脚本（推荐）
 
-1. **构建镜像**:
-
-   ```bash
-   docker build -t mcp-ai-memory .
-   ```
-
-2. **创建配置文件**:
-
-   ```bash
-   cp .env.example .env
-   # 编辑 .env 文件
-   ```
-
-3. **运行容器**:
-
-   ```bash
-   # SSE 模式
-   docker run --rm -d \
-     --name mcp-ai-memory \
-     --env-file .env \
-     -v ./mem0_data:/app/mem0_data \
-     -p 8050:8050 \
-     mcp-ai-memory
-
-   # stdio 模式
-   docker run --rm -i \
-     --env-file .env \
-     -e TRANSPORT=stdio \
-     -v ./mem0_data:/app/mem0_data \
-     mcp-ai-memory
-   ```
-
-### 方式三：使用 pip
+一键启动 Qdrant 和 MCP 服务：
 
 ```bash
-pip install -e .
-mcp-ai-memory
+./quickstart.sh
 ```
+
+然后按菜单选择启动方案。
+
+### 方式三：使用 Docker Compose（推荐生产）
+
+```bash
+# 启动 Qdrant 服务
+docker-compose up -d qdrant
+
+# 或启动完整的 Docker Compose（包括 MCP 服务）
+docker-compose -f docker-compose.full.yml up -d
+```
+
+详细部署指南见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 ## 配置说明
 
@@ -150,7 +131,7 @@ LLM_MODEL=deepseek-chat
 
 ### 向量库配置
 
-#### Qdrant 本地存储（默认，无需额外服务）
+#### Qdrant 本地存储（适合单进程部署）
 
 ```env
 VECTOR_STORE_PROVIDER=qdrant
@@ -158,7 +139,9 @@ QDRANT_PATH=./mem0_data
 QDRANT_COLLECTION=mem0_memories
 ```
 
-#### Qdrant 服务器
+> ⚠️ 注意：本地存储模式在多进程同时访问时会出现文件锁冲突。如果需要并发访问（如同时运行测试和服务），建议使用 Qdrant 服务器模式。
+
+#### Qdrant 服务器（推荐，支持并发访问）
 
 ```env
 VECTOR_STORE_PROVIDER=qdrant
@@ -167,11 +150,62 @@ QDRANT_PORT=6333
 QDRANT_COLLECTION=mem0_memories
 ```
 
+**使用 Docker 快速启动 Qdrant 服务**：
+
+```bash
+# 方式 1：使用 docker-compose（推荐）
+docker-compose up -d qdrant
+
+# 方式 2：直接使用 docker run
+docker run -d \
+  --name qdrant-vectordb \
+  -p 6333:6333 \
+  -p 6334:6334 \
+  -v qdrant-storage:/qdrant/storage \
+  qdrant/qdrant:latest
+```
+
+访问 Qdrant 管理界面：http://localhost:6333/dashboard
+
 #### PostgreSQL + pgvector
 
 ```env
 VECTOR_STORE_PROVIDER=pgvector
 DATABASE_URL=postgresql://user:password@localhost:5432/mem0
+```
+
+#### Chroma
+
+```env
+VECTOR_STORE_PROVIDER=chroma
+CHROMA_PATH=./chroma_data
+```
+
+## 使用 Docker Compose 快速启动
+
+项目提供了 `docker-compose.yml`，可以一键启动 Qdrant 服务：
+
+```bash
+# 启动 Qdrant 服务
+docker-compose up -d qdrant
+
+# 查看服务状态
+docker-compose ps
+
+# 停止服务
+docker-compose down
+
+# 清理所有数据（包括数据卷）
+docker-compose down -v
+```
+
+**配置文件**（`.env`）中使用 Qdrant 服务器：
+
+```env
+VECTOR_STORE_PROVIDER=qdrant
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+QDRANT_COLLECTION=mem0_memories
 ```
 
 ## MCP 客户端配置
@@ -343,6 +377,8 @@ stdio 模式无需预先启动服务，客户端会自动拉起进程。
 
 ## 完全本地部署示例
 
+### 方案 A：完全离线（推荐开发环境）
+
 使用 Ollama + Qdrant 本地存储，无需任何外部 API：
 
 1. **安装并启动 Ollama**:
@@ -377,6 +413,116 @@ stdio 模式无需预先启动服务，客户端会自动拉起进程。
    ```bash
    python -m mcp_ai_memory.server
    ```
+
+### 方案 B：使用 Qdrant 服务（推荐生产环境）
+
+支持并发访问和更好的扩展性：
+
+1. **启动 Qdrant 服务**:
+
+   ```bash
+   docker-compose up -d qdrant
+   ```
+
+2. **配置 .env**:
+
+   ```env
+   TRANSPORT=sse
+   HOST=0.0.0.0
+   PORT=8050
+   
+   LLM_PROVIDER=openai
+   LLM_BASE_URL=https://api.vectorengine.ai/v1
+   LLM_API_KEY=sk-xxx
+   LLM_MODEL=gpt-4o-mini
+   
+   EMBEDDING_PROVIDER=openai
+   EMBEDDING_MODEL=text-embedding-3-small
+   EMBEDDING_DIMS=1536
+   
+   VECTOR_STORE_PROVIDER=qdrant
+   QDRANT_HOST=localhost
+   QDRANT_PORT=6333
+   QDRANT_COLLECTION=mem0_memories
+   ```
+
+3. **启动 MCP 服务**:
+
+   ```bash
+   TRANSPORT=sse uv run python -m mcp_ai_memory.server
+   ```
+
+### 方案 C：完整 Docker Compose 部署
+
+创建完整的多容器环境（包括 MCP 服务和 Qdrant）：
+
+```bash
+# 编辑 docker-compose.yml 添加 MCP 服务
+# 然后启动所有服务
+docker-compose up -d
+```
+
+## 故障排查
+
+### 问题 1：Qdrant 文件锁错误
+
+如果看到错误：`Storage folder is already accessed by another instance of Qdrant client`
+
+**解决方案**：
+- 切换到 Qdrant 服务器模式（参考"方案 B"）
+- 或者关闭所有其他访问同一数据文件的进程
+
+```bash
+# 停止所有相关进程
+pkill -f mcp_ai_memory
+pkill -f mem0
+
+# 清理本地 Qdrant 文件
+rm -rf ./mem0_data
+
+# 重新启动
+docker-compose up -d qdrant
+TRANSPORT=sse uv run python -m mcp_ai_memory.server
+```
+
+### 问题 2：API 连接失败
+
+错误消息：`Connection error` 或 `API 连接失败`
+
+**排查步骤**：
+
+1. 运行诊断脚本：
+   ```bash
+   uv run python diagnose_api.py
+   ```
+
+2. 检查 `.env` 配置：
+   - `LLM_BASE_URL` 是否正确
+   - `LLM_API_KEY` 是否有效
+   - 网络连接是否正常
+
+3. 测试 API 连接：
+   ```bash
+   curl -X POST https://api.vectorengine.ai/v1/chat/completions \
+     -H "Authorization: Bearer sk-xxx" \
+     -H "Content-Type: application/json" \
+     -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"test"}],"max_tokens":10}'
+   ```
+
+### 问题 3：测试脚本无法连接到 MCP 服务
+
+确保 MCP 服务正在运行：
+
+```bash
+# 检查服务状态
+ps aux | grep mcp_ai_memory
+
+# 查看服务日志
+tail -f /tmp/mcp_server.log
+
+# 测试连接
+curl http://localhost:8050/sse
+```
 
 ## License
 
