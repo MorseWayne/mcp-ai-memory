@@ -132,11 +132,12 @@ def _build_llm_config() -> Dict[str, Any]:
 
 def _build_embedder_config() -> Dict[str, Any]:
     """Build embedder configuration from environment variables."""
-    provider = get_env("EMBEDDING_PROVIDER", get_env("LLM_PROVIDER", "openai"))
+    provider = get_env("EMBEDDING_PROVIDER") or get_env("LLM_PROVIDER", "openai")
     model = get_env("EMBEDDING_MODEL", "text-embedding-3-small")
     dims = get_env_int("EMBEDDING_DIMS", 1536)
-    api_key = get_env("EMBEDDING_API_KEY", get_env("LLM_API_KEY"))
-    base_url = get_env("EMBEDDING_BASE_URL", get_env("LLM_BASE_URL"))
+    # Fall back to LLM credentials if embedding-specific ones are not set
+    api_key = get_env("EMBEDDING_API_KEY") or get_env("LLM_API_KEY")
+    base_url = get_env("EMBEDDING_BASE_URL") or get_env("LLM_BASE_URL")
 
     config: Dict[str, Any] = {
         "provider": provider,

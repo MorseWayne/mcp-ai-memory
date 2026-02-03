@@ -176,9 +176,25 @@ DATABASE_URL=postgresql://user:password@localhost:5432/mem0
 
 ## MCP 客户端配置
 
+### 配置文件位置
+
+不同客户端的 MCP 配置文件位置：
+
+| 客户端 | 配置文件路径 |
+| --- | --- |
+| Cursor | `~/.cursor/mcp.json`（全局）或 `{项目}/.cursor/mcp.json`（项目级） |
+| Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
+
 ### SSE 模式（推荐用于持久服务）
 
-先启动服务器，然后在 MCP 客户端中配置：
+先启动服务器：
+
+```bash
+TRANSPORT=sse uv run python -m mcp_ai_memory.server
+```
+
+然后在 MCP 客户端配置文件中添加：
 
 ```json
 {
@@ -191,7 +207,33 @@ DATABASE_URL=postgresql://user:password@localhost:5432/mem0
 }
 ```
 
-### stdio 模式（适用于 Claude Desktop 等）
+### stdio 模式（适用于 Claude Desktop、Cursor 等）
+
+stdio 模式无需预先启动服务，客户端会自动拉起进程。
+
+#### 使用 uv 运行（推荐）
+
+```json
+{
+  "mcpServers": {
+    "mem0-local": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/mcp-ai-memory", "python", "-m", "mcp_ai_memory.server"],
+      "env": {
+        "TRANSPORT": "stdio",
+        "LLM_PROVIDER": "ollama",
+        "LLM_BASE_URL": "http://localhost:11434",
+        "LLM_MODEL": "qwen2.5:7b",
+        "EMBEDDING_PROVIDER": "ollama",
+        "EMBEDDING_MODEL": "nomic-embed-text",
+        "EMBEDDING_DIMS": "768",
+        "VECTOR_STORE_PROVIDER": "qdrant",
+        "QDRANT_PATH": "/path/to/mem0_data"
+      }
+    }
+  }
+}
+```
 
 #### Python 直接运行
 
@@ -200,7 +242,7 @@ DATABASE_URL=postgresql://user:password@localhost:5432/mem0
   "mcpServers": {
     "mem0-local": {
       "command": "python",
-      "args": ["-m", "mem0_local_mcp.server"],
+      "args": ["-m", "mcp_ai_memory.server"],
       "env": {
         "TRANSPORT": "stdio",
         "LLM_PROVIDER": "ollama",

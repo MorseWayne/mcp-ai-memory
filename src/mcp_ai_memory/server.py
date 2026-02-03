@@ -38,17 +38,32 @@ class Mem0Context:
     mem0_client: Memory
 
 
+# Global singleton for Mem0 client to avoid multiple initializations in SSE mode
+_mem0_client: Optional[Memory] = None
+_mem0_lock = asyncio.Lock()
+
+
+async def _get_or_create_mem0_client() -> Memory:
+    """Get or create the singleton Mem0 client."""
+    global _mem0_client
+    async with _mem0_lock:
+        if _mem0_client is None:
+            logger.info("Initializing Mem0 client...")
+            _mem0_client = create_mem0_client()
+            logger.info("Mem0 client initialized successfully")
+        return _mem0_client
+
+
 @asynccontextmanager
 async def mem0_lifespan(server: FastMCP) -> AsyncIterator[Mem0Context]:
     """Manage the Mem0 client lifecycle."""
-    logger.info("Initializing Mem0 client...")
-    mem0_client = create_mem0_client()
-    logger.info("Mem0 client initialized successfully")
+    mem0_client = await _get_or_create_mem0_client()
 
     try:
         yield Mem0Context(mem0_client=mem0_client)
     finally:
-        logger.info("Shutting down Mem0 client...")
+        # Don't shutdown the client here as it's shared across connections
+        pass
 
 
 def create_server() -> FastMCP:
@@ -56,7 +71,7 @@ def create_server() -> FastMCP:
 
     server = FastMCP(
         "ai-memory",
-        description="MCP server for local long-term memory storage",
+        instructions="MCP server for local long-term memory storage",
         lifespan=mem0_lifespan,
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8050")),
@@ -332,7 +347,10 @@ async def run_async():
 
 def main() -> None:
     """Run the MCP server."""
-    asyncio.run(run_async())
+    try:
+        asyncio.run(run_async())
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
 
 
 if __name__ == "__main__":
