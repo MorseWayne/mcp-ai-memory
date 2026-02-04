@@ -10,7 +10,7 @@ An MCP (Model Context Protocol) memory server supporting local deployment and cu
 - **Multi-LLM Support**: OpenAI, Ollama, OpenRouter, Azure OpenAI, DeepSeek, Together, Groq, etc.
 - **Multi-Vector Store Support**: Qdrant (Recommended), pgvector, Chroma
 - **Rich Toolset**: Complete CRUD operations including adding, searching, updating, and deleting memories
-- **Dual Transport Mode**: Supports both SSE (HTTP) and stdio transport protocols
+- **Multiple Transport Modes**: Supports Streamable HTTP (recommended), SSE, and stdio protocols
 - **Docker Support**: Provides complete containerized deployment solutions
 - **Cursor Agent Skill**: Built-in intelligent Skill to automatically sync project knowledge to long-term memory
 
@@ -57,7 +57,10 @@ An MCP (Model Context Protocol) memory server supporting local deployment and cu
 4. **Run Server**:
 
    ```bash
-   # SSE Mode
+   # Streamable HTTP Mode (recommended, auto-recovers after server restart)
+   TRANSPORT=streamable-http uv run python -m mcp_ai_memory.server
+
+   # Or SSE Mode (deprecated)
    TRANSPORT=sse uv run python -m mcp_ai_memory.server
 
    # Or stdio Mode
@@ -216,12 +219,16 @@ MCP configuration file locations for different clients:
 | Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
 
-### SSE Mode (Recommended for Persistent Service)
+### Streamable HTTP Mode (Recommended for Persistent Service)
+
+Streamable HTTP is the recommended transport mode in MCP spec:
+- **Stateless connections**: Auto-recovers after server restart, no "uninitialized" errors
+- **Better compatibility**: Works with various network environments and proxies
 
 First start the server:
 
 ```bash
-TRANSPORT=sse uv run python -m mcp_ai_memory.server
+TRANSPORT=streamable-http uv run python -m mcp_ai_memory.server
 ```
 
 Then add to MCP client configuration file:
@@ -230,8 +237,8 @@ Then add to MCP client configuration file:
 {
   "mcpServers": {
     "mem0-local": {
-      "transport": "sse",
-      "url": "http://localhost:8050/sse"
+      "transport": "http",
+      "url": "http://localhost:8050/mcp"
     }
   }
 }
@@ -408,7 +415,7 @@ Skill saves memory in standardized format:
 ```
 "mcp-ai-memory project uses Mem0 library for long-term memory storage, supports Qdrant and pgvector vector stores"
 "mcp-ai-memory's add_memory interface supports text, messages, user_id, metadata parameters"
-"Project supports SSE and stdio transport modes, switch via TRANSPORT environment variable"
+"Project supports Streamable HTTP, SSE and stdio transport modes, streamable-http is recommended"
 ```
 
 ## Memory Extraction Prompt Configuration
@@ -469,9 +476,9 @@ Refer to the default prompt templates in `src/mcp_ai_memory/prompts.py`.
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `TRANSPORT` | Transport protocol (sse/stdio) | `sse` |
-| `HOST` | SSE Bind Address | `0.0.0.0` |
-| `PORT` | SSE Port | `8050` |
+| `TRANSPORT` | Transport protocol (streamable-http/sse/stdio) | `sse` |
+| `HOST` | HTTP Bind Address | `0.0.0.0` |
+| `PORT` | HTTP Port | `8050` |
 | `LLM_PROVIDER` | LLM Provider | `openai` |
 | `LLM_BASE_URL` | LLM API URL | - |
 | `LLM_API_KEY` | LLM API Key | - |

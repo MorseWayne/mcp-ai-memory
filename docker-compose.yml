@@ -39,7 +39,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      TRANSPORT: sse
+      TRANSPORT: streamable-http
       HOST: 0.0.0.0
       PORT: 8050
       HTTP_PROXY: ${CONTAINER_HTTP_PROXY:-}

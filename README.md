@@ -10,7 +10,7 @@
 - **多 LLM 支持**: OpenAI、Ollama、OpenRouter、Azure OpenAI、DeepSeek、Together、Groq 等
 - **多向量库支持**: Qdrant（推荐）、pgvector、Chroma
 - **丰富的工具集**: 添加、搜索、更新、删除记忆等完整 CRUD 操作
-- **双传输模式**: 支持 SSE (HTTP) 和 stdio 两种传输协议
+- **多传输模式**: 支持 Streamable HTTP（推荐）、SSE 和 stdio 三种传输协议
 - **Docker 支持**: 提供完整的容器化部署方案
 - **Cursor Agent Skill**: 内置智能 Skill，自动同步项目知识到长期记忆
 
@@ -131,7 +131,10 @@
 4. **运行服务**:
 
    ```bash
-   # SSE 模式
+   # Streamable HTTP 模式（推荐，服务重启后客户端自动恢复）
+   TRANSPORT=streamable-http uv run python -m mcp_ai_memory.server
+
+   # 或 SSE 模式（已弃用）
    TRANSPORT=sse uv run python -m mcp_ai_memory.server
 
    # 或 stdio 模式
@@ -290,12 +293,16 @@ QDRANT_COLLECTION=mem0_memories
 | Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
 
-### SSE 模式（推荐用于持久服务）
+### Streamable HTTP 模式（推荐用于持久服务）
+
+Streamable HTTP 是 MCP 规范推荐的传输方式，优点：
+- **无状态连接**：服务重启后客户端自动恢复，不会出现"未初始化"错误
+- **更好的兼容性**：适用于各种网络环境和代理
 
 先启动服务器：
 
 ```bash
-TRANSPORT=sse uv run python -m mcp_ai_memory.server
+TRANSPORT=streamable-http uv run python -m mcp_ai_memory.server
 ```
 
 然后在 MCP 客户端配置文件中添加：
@@ -304,8 +311,8 @@ TRANSPORT=sse uv run python -m mcp_ai_memory.server
 {
   "mcpServers": {
     "mem0-local": {
-      "transport": "sse",
-      "url": "http://localhost:8050/sse"
+      "transport": "http",
+      "url": "http://localhost:8050/mcp"
     }
   }
 }
@@ -482,7 +489,7 @@ Skill 会以标准化格式保存记忆：
 ```
 "mcp-ai-memory 项目使用 Mem0 库实现长期记忆存储，支持 Qdrant 和 pgvector 向量库"
 "mcp-ai-memory 的 add_memory 接口支持 text、messages、user_id、metadata 等参数"
-"项目支持 SSE 和 stdio 两种传输模式，通过 TRANSPORT 环境变量切换"
+"项目支持 Streamable HTTP、SSE 和 stdio 三种传输模式，推荐使用 streamable-http"
 ```
 
 ## 记忆提取 Prompt 配置
@@ -543,9 +550,9 @@ CUSTOM_FACT_EXTRACTION_PROMPT="Your custom prompt here..."
 
 | 变量 | 描述 | 默认值 |
 | --- | --- | --- |
-| `TRANSPORT` | 传输协议 (sse/stdio) | `sse` |
-| `HOST` | SSE 绑定地址 | `0.0.0.0` |
-| `PORT` | SSE 端口 | `8050` |
+| `TRANSPORT` | 传输协议 (streamable-http/sse/stdio) | `sse` |
+| `HOST` | HTTP 绑定地址 | `0.0.0.0` |
+| `PORT` | HTTP 端口 | `8050` |
 | `LLM_PROVIDER` | LLM 提供商 | `openai` |
 | `LLM_BASE_URL` | LLM API 地址 | - |
 | `LLM_API_KEY` | LLM API 密钥 | - |

@@ -413,7 +413,12 @@ async def run_async():
 
     logger.info(f"Starting AI Memory MCP server (transport={transport}, user={DEFAULT_USER_ID})")
 
-    if transport == "sse":
+    if transport == "streamable-http":
+        # Streamable HTTP: stateless, better reconnection handling
+        # Default path is /mcp
+        await server.run_streamable_http_async()
+    elif transport == "sse":
+        # Legacy SSE mode (deprecated in MCP spec 2025-03-26)
         await server.run_sse_async()
     else:
         await server.run_stdio_async()
