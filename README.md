@@ -2,6 +2,8 @@
 
 一个支持本地部署、自定义 LLM Provider 的 MCP (Model Context Protocol) 记忆服务器。基于 [Mem0](https://mem0.ai) 库实现，提供持久化的长期记忆存储能力。
 
+[中文文档](README.md) | [English Documentation](README_EN.md)
+
 ## 特性
 
 - **本地部署**: 无需依赖云服务，数据完全本地存储
@@ -14,17 +16,91 @@
 
 ## 提供的工具
 
-| 工具 | 描述 |
-| --- | --- |
-| `add_memory` | 保存文本或对话历史到长期记忆 |
-| `search_memories` | 语义搜索现有记忆 |
-| `get_memories` | 列出所有记忆（支持过滤） |
-| `get_memory` | 通过 memory_id 获取单条记忆 |
-| `update_memory` | 更新指定记忆的内容 |
-| `delete_memory` | 删除单条记忆 |
-| `delete_all_memories` | 批量删除指定范围的记忆 |
-| `get_memory_history` | 获取记忆的变更历史 |
-| `reset_memories` | 重置所有记忆（慎用） |
+### add_memory
+
+保存文本或对话历史到长期记忆。
+
+| 参数 | 类型 | 必填 | 描述 |
+| --- | --- | --- | --- |
+| `text` | string | ✅ | 要存储的内容摘要 |
+| `messages` | array | - | 结构化对话历史，格式为 `[{"role": "user", "content": "..."}]` |
+| `user_id` | string | - | 用户 ID，用于隔离不同用户的记忆 |
+| `agent_id` | string | - | Agent 标识符 |
+| `run_id` | string | - | 运行标识符 |
+| `metadata` | object | - | 附加的元数据 JSON |
+
+### search_memories
+
+语义搜索现有记忆。
+
+| 参数 | 类型 | 必填 | 描述 |
+| --- | --- | --- | --- |
+| `query` | string | ✅ | 自然语言描述要查找的内容 |
+| `user_id` | string | - | 按用户 ID 过滤 |
+| `agent_id` | string | - | 按 Agent ID 过滤 |
+| `run_id` | string | - | 按运行 ID 过滤 |
+| `limit` | int | - | 最大返回结果数，默认 10 |
+
+### get_memories
+
+列出所有记忆（支持过滤）。
+
+| 参数 | 类型 | 必填 | 描述 |
+| --- | --- | --- | --- |
+| `user_id` | string | - | 按用户 ID 过滤 |
+| `agent_id` | string | - | 按 Agent ID 过滤 |
+| `run_id` | string | - | 按运行 ID 过滤 |
+
+### get_memory
+
+通过 memory_id 获取单条记忆。
+
+| 参数 | 类型 | 必填 | 描述 |
+| --- | --- | --- | --- |
+| `memory_id` | string | ✅ | 要获取的记忆 ID |
+
+### update_memory
+
+更新指定记忆的内容。
+
+| 参数 | 类型 | 必填 | 描述 |
+| --- | --- | --- | --- |
+| `memory_id` | string | ✅ | 要更新的记忆 ID |
+| `text` | string | ✅ | 替换的新文本内容 |
+
+### delete_memory
+
+删除单条记忆。
+
+| 参数 | 类型 | 必填 | 描述 |
+| --- | --- | --- | --- |
+| `memory_id` | string | ✅ | 要删除的记忆 ID |
+
+### delete_all_memories
+
+批量删除指定范围的记忆。
+
+| 参数 | 类型 | 必填 | 描述 |
+| --- | --- | --- | --- |
+| `user_id` | string | - | 按用户范围删除 |
+| `agent_id` | string | - | 按 Agent 范围删除 |
+| `run_id` | string | - | 按运行范围删除 |
+
+### get_memory_history
+
+获取记忆的变更历史。
+
+| 参数 | 类型 | 必填 | 描述 |
+| --- | --- | --- | --- |
+| `memory_id` | string | ✅ | 要获取历史的记忆 ID |
+
+### reset_memories
+
+重置所有记忆（慎用）。
+
+| 参数 | 类型 | 必填 | 描述 |
+| --- | --- | --- | --- |
+| - | - | - | 无参数 |
 
 ## 快速开始
 
