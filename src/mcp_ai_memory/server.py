@@ -309,14 +309,25 @@ def create_server() -> FastMCP:
             logger.error(f"Error deleting memory {memory_id}: {e}")
             return _safe_json({"error": str(e)})
 
-    @server.tool(description="Bulk delete memories by scope.")
+    @server.tool(description="Bulk delete memories by scope. WARNING: Due to a bug in mem0 1.0.x, this may delete ALL memories regardless of filters! Use with extreme caution.")
     async def delete_all_memories(
         user_id: Annotated[Optional[str], Field(default=None, description="User scope to delete.")] = None,
         agent_id: Annotated[Optional[str], Field(default=None, description="Agent scope to delete.")] = None,
         run_id: Annotated[Optional[str], Field(default=None, description="Run scope to delete.")] = None,
         ctx: Context = None,
     ) -> str:
-        """Delete multiple memories by scope."""
+        """Delete multiple memories by scope.
+        
+        WARNING: Due to a known bug in mem0 1.0.x (see GitHub issue #3746),
+        delete_all may ignore user_id/agent_id/run_id filters and delete ALL memories!
+        Use delete_memory for safer individual deletions.
+        """
+        # Log warning about the known bug
+        logger.warning(
+            "⚠️ delete_all_memories called. Due to mem0 1.0.x bug, this may delete ALL memories! "
+            f"Requested filters: user_id={user_id}, agent_id={agent_id}, run_id={run_id}"
+        )
+        
         try:
             client = _get_client(ctx)
             kwargs: Dict[str, Any] = {}

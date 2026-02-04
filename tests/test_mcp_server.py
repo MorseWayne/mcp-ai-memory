@@ -327,24 +327,38 @@ async def test_mcp_server(base_url: str, skip_api: bool = False):
                     print("   ⏭️ 没有可用的 memory_id，已跳过")
 
                 # 测试 8: 批量删除记忆 (清理测试数据)
+                # ⚠️ 注意: mem0 1.0.x 有 bug，delete_all 会删除所有用户的记忆！
+                # 所以这里改用逐条删除的方式清理测试数据
                 print("\n" + "-" * 40)
-                print("🗑️ 测试 8: 批量删除记忆 (delete_all_memories)")
+                print("🗑️ 测试 8: 清理测试记忆 (逐条删除)")
                 print("-" * 40)
                 
-                result = await call_tool("delete_all_memories", {
+                # 先获取测试用户的所有记忆
+                result = await call_tool("get_memories", {
                     "user_id": test_user_id,
+                    "agent_id": test_agent_id,
                 })
                 
                 if result and "error" not in result:
-                    print(f"   ✅ 批量删除成功")
+                    memories = result.get("results", [])
+                    deleted_count = 0
+                    for mem in memories:
+                        mem_id = mem.get("id")
+                        if mem_id:
+                            del_result = await call_tool("delete_memory", {
+                                "memory_id": mem_id,
+                            })
+                            if del_result and "error" not in del_result:
+                                deleted_count += 1
+                    print(f"   ✅ 已删除 {deleted_count}/{len(memories)} 条测试记忆")
                 else:
-                    print(f"   ❌ 批量删除失败: {result}")
-                    all_passed = False
+                    print(f"   ⚠️ 获取记忆列表失败: {result}")
 
                 # 验证删除成功
                 print("\n   验证删除结果...")
                 result = await call_tool("get_memories", {
                     "user_id": test_user_id,
+                    "agent_id": test_agent_id,
                 })
                 
                 if result:
