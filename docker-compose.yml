@@ -45,6 +45,12 @@ services:
       HTTP_PROXY: ${CONTAINER_HTTP_PROXY:-}
       HTTPS_PROXY: ${CONTAINER_HTTPS_PROXY:-}
       NO_PROXY: ${CONTAINER_NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,qdrant,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      # 小写版本的代理变量（某些 Python 库需要）
+      http_proxy: ${CONTAINER_HTTP_PROXY:-}
+      https_proxy: ${CONTAINER_HTTPS_PROXY:-}
+      no_proxy: ${CONTAINER_NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,qdrant,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      # 禁用 Posthog 遥测
+      POSTHOG_DISABLED: "true"
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY}
