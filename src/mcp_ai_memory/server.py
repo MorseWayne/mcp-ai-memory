@@ -135,7 +135,7 @@ def create_server() -> FastMCP:
     @server.tool(
         description="Store a new preference, fact, or conversation snippet in long-term memory."
     )
-    def add_memory(
+    async def add_memory(
         text: Annotated[
             str,
             Field(description="Plain sentence summarizing what to store. Required."),
@@ -183,7 +183,8 @@ def create_server() -> FastMCP:
                 kwargs["metadata"] = metadata
             
             logger.info(f"[DEBUG] Calling mem0.add with conversation: {conversation}")
-            result = client.add(conversation, **kwargs)
+            # Run blocking call in thread pool for concurrency support
+            result = await asyncio.to_thread(client.add, conversation, **kwargs)
             
             # Analyze the result for debugging
             _analyze_add_result(result, text, effective_user_id)
@@ -208,7 +209,7 @@ def create_server() -> FastMCP:
     @server.tool(
         description="Semantic search across existing memories."
     )
-    def search_memories(
+    async def search_memories(
         query: Annotated[str, Field(description="Natural language description of what to find.")],
         user_id: Annotated[Optional[str], Field(default=None, description="Filter by user ID.")] = None,
         agent_id: Annotated[Optional[str], Field(default=None, description="Filter by agent ID.")] = None,
@@ -224,7 +225,8 @@ def create_server() -> FastMCP:
                 kwargs["agent_id"] = agent_id
             if run_id:
                 kwargs["run_id"] = run_id
-            result = client.search(query, **kwargs)
+            # Run blocking call in thread pool for concurrency support
+            result = await asyncio.to_thread(client.search, query, **kwargs)
             memories = _extract_memories(result)
             logger.info(f"Search returned {len(memories)} results for query: {query[:50]}...")
             return _safe_json({"results": memories, "count": len(memories)})
@@ -235,7 +237,7 @@ def create_server() -> FastMCP:
     @server.tool(
         description="List all memories with optional filters. Use for browsing stored memories."
     )
-    def get_memories(
+    async def get_memories(
         user_id: Annotated[Optional[str], Field(default=None, description="Filter by user ID.")] = None,
         agent_id: Annotated[Optional[str], Field(default=None, description="Filter by agent ID.")] = None,
         run_id: Annotated[Optional[str], Field(default=None, description="Filter by run ID.")] = None,
@@ -249,7 +251,8 @@ def create_server() -> FastMCP:
                 kwargs["agent_id"] = agent_id
             if run_id:
                 kwargs["run_id"] = run_id
-            result = client.get_all(**kwargs)
+            # Run blocking call in thread pool for concurrency support
+            result = await asyncio.to_thread(client.get_all, **kwargs)
             memories = _extract_memories(result)
             logger.info(f"Retrieved {len(memories)} memories for user={kwargs.get('user_id')}")
             return _safe_json({"results": memories, "count": len(memories)})
@@ -258,14 +261,15 @@ def create_server() -> FastMCP:
             return _safe_json({"error": str(e)})
 
     @server.tool(description="Fetch a single memory by its memory_id.")
-    def get_memory(
+    async def get_memory(
         memory_id: Annotated[str, Field(description="Exact memory_id to fetch.")],
         ctx: Context = None,
     ) -> str:
         """Retrieve a single memory once you know its ID."""
         try:
             client = _get_client(ctx)
-            result = client.get(memory_id)
+            # Run blocking call in thread pool for concurrency support
+            result = await asyncio.to_thread(client.get, memory_id)
             logger.info(f"Retrieved memory: {memory_id}")
             return _safe_json(result)
         except Exception as e:
@@ -273,7 +277,7 @@ def create_server() -> FastMCP:
             return _safe_json({"error": str(e)})
 
     @server.tool(description="Overwrite an existing memory's text.")
-    def update_memory(
+    async def update_memory(
         memory_id: Annotated[str, Field(description="Exact memory_id to overwrite.")],
         text: Annotated[str, Field(description="Replacement text for the memory.")],
         ctx: Context = None,
@@ -281,7 +285,8 @@ def create_server() -> FastMCP:
         """Overwrite an existing memory's text after confirming the exact memory_id."""
         try:
             client = _get_client(ctx)
-            result = client.update(memory_id=memory_id, data=text)
+            # Run blocking call in thread pool for concurrency support
+            result = await asyncio.to_thread(client.update, memory_id=memory_id, data=text)
             logger.info(f"Updated memory: {memory_id}")
             return _safe_json(result)
         except Exception as e:
@@ -289,14 +294,15 @@ def create_server() -> FastMCP:
             return _safe_json({"error": str(e)})
 
     @server.tool(description="Delete a single memory by its memory_id.")
-    def delete_memory(
+    async def delete_memory(
         memory_id: Annotated[str, Field(description="Exact memory_id to delete.")],
         ctx: Context = None,
     ) -> str:
         """Delete a single memory."""
         try:
             client = _get_client(ctx)
-            result = client.delete(memory_id=memory_id)
+            # Run blocking call in thread pool for concurrency support
+            result = await asyncio.to_thread(client.delete, memory_id=memory_id)
             logger.info(f"Deleted memory: {memory_id}")
             return _safe_json(result)
         except Exception as e:
@@ -304,7 +310,7 @@ def create_server() -> FastMCP:
             return _safe_json({"error": str(e)})
 
     @server.tool(description="Bulk delete memories by scope.")
-    def delete_all_memories(
+    async def delete_all_memories(
         user_id: Annotated[Optional[str], Field(default=None, description="User scope to delete.")] = None,
         agent_id: Annotated[Optional[str], Field(default=None, description="Agent scope to delete.")] = None,
         run_id: Annotated[Optional[str], Field(default=None, description="Run scope to delete.")] = None,
@@ -320,7 +326,8 @@ def create_server() -> FastMCP:
                 kwargs["agent_id"] = agent_id
             if run_id:
                 kwargs["run_id"] = run_id
-            result = client.delete_all(**kwargs)
+            # Run blocking call in thread pool for concurrency support
+            result = await asyncio.to_thread(client.delete_all, **kwargs)
             logger.info("Bulk delete executed")
             return _safe_json(result)
         except Exception as e:
@@ -328,14 +335,15 @@ def create_server() -> FastMCP:
             return _safe_json({"error": str(e)})
 
     @server.tool(description="View change history for a memory.")
-    def get_memory_history(
+    async def get_memory_history(
         memory_id: Annotated[str, Field(description="Memory ID to get history for.")],
         ctx: Context = None,
     ) -> str:
         """Get change history for a memory."""
         try:
             client = _get_client(ctx)
-            result = client.get_history(memory_id=memory_id)
+            # Run blocking call in thread pool for concurrency support
+            result = await asyncio.to_thread(client.get_history, memory_id=memory_id)
             logger.info(f"History fetched for memory: {memory_id}")
             return _safe_json(result)
         except Exception as e:
@@ -343,11 +351,12 @@ def create_server() -> FastMCP:
             return _safe_json({"error": str(e)})
 
     @server.tool(description="Reset all memories. Use with caution!")
-    def reset_memories(ctx: Context = None) -> str:
+    async def reset_memories(ctx: Context = None) -> str:
         """Reset all stored memories."""
         try:
             client = _get_client(ctx)
-            result = client.reset()
+            # Run blocking call in thread pool for concurrency support
+            result = await asyncio.to_thread(client.reset)
             logger.warning("All memories have been reset")
             return _safe_json(result)
         except Exception as e:
