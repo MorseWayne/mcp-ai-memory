@@ -411,6 +411,60 @@ Skill saves memory in standardized format:
 "Project supports SSE and stdio transport modes, switch via TRANSPORT environment variable"
 ```
 
+## Memory Extraction Prompt Configuration
+
+This project uses custom prompts to control how LLM extracts memories from input. By default, it uses an enhanced prompt that supports storing both personal preferences and project knowledge/technical documentation.
+
+### Built-in Prompt Types
+
+| Type | Description | Use Case |
+| --- | --- | --- |
+| `default` | Enhanced: Supports personal preferences + project knowledge/technical docs | Need to store project knowledge, API design, code conventions, etc. |
+| `personal` | Original: Only supports personal preferences (original mem0 behavior) | Only need to store user personal preferences and info |
+
+### Configuration Methods
+
+#### Using Built-in Types
+
+```env
+# Use enhanced type (default)
+FACT_EXTRACTION_PROMPT_TYPE=default
+
+# Use original type
+FACT_EXTRACTION_PROMPT_TYPE=personal
+```
+
+#### Load Custom Prompt from File
+
+```env
+CUSTOM_FACT_EXTRACTION_PROMPT_FILE=/path/to/custom_prompt.txt
+```
+
+You can use `{current_date}` placeholder in the prompt file, which will be automatically replaced with current date.
+
+#### Set Custom Prompt Directly
+
+```env
+CUSTOM_FACT_EXTRACTION_PROMPT="Your custom prompt here..."
+```
+
+### Configuration Priority
+
+1. `CUSTOM_FACT_EXTRACTION_PROMPT` (set directly via environment variable)
+2. `CUSTOM_FACT_EXTRACTION_PROMPT_FILE` (load from file)
+3. `FACT_EXTRACTION_PROMPT_TYPE` (use built-in type)
+
+### Custom Prompt Writing Guide
+
+A custom prompt should:
+
+1. Define the types of information to extract
+2. Provide few-shot examples
+3. Specify output format as JSON: `{"facts": ["fact1", "fact2", ...]}`
+4. Describe language detection rules (recommend keeping input language)
+
+Refer to the default prompt templates in `src/mcp_ai_memory/prompts.py`.
+
 ## Environment Variables Reference
 
 | Variable | Description | Default |
@@ -429,6 +483,9 @@ Skill saves memory in standardized format:
 | `QDRANT_PATH` | Qdrant Local Path | `./mem0_data` |
 | `DEFAULT_USER_ID` | Default User ID | `default_user` |
 | `LOG_LEVEL` | Log Level | `INFO` |
+| `FACT_EXTRACTION_PROMPT_TYPE` | Prompt type (default/personal) | `default` |
+| `CUSTOM_FACT_EXTRACTION_PROMPT_FILE` | Custom prompt file path | - |
+| `CUSTOM_FACT_EXTRACTION_PROMPT` | Set custom prompt directly | - |
 
 ## Fully Local Deployment Examples
 
@@ -580,6 +637,64 @@ tail -f /tmp/mcp_server.log
 # Test connection
 curl http://localhost:8050/sse
 ```
+
+### Issue 4: Memory Added Successfully But Cannot Be Searched
+
+If `add_memory` returns success, but `search_memories` or `get_memories` returns empty results:
+
+**Possible Cause**: LLM did not extract valid memory facts from the input.
+
+**Troubleshooting Steps**:
+
+1. **Enable Debug Logging**:
+
+   ```env
+   LOG_LEVEL=DEBUG
+   ```
+
+2. **Check Log Output**, look for:
+
+   ```
+   [DEBUG] No memories extracted by LLM! Input: '...'
+   ```
+
+   or
+
+   ```
+   Memory operation completed for user=xxx, added=0 memories
+   ```
+
+3. **Common Causes and Solutions**:
+
+   | Log Message | Cause | Solution |
+   | --- | --- | --- |
+   | `added=0 memories` | LLM determined input contains no storable info | Check input format (see below) |
+   | `event=NONE` | LLM determined as duplicate or not worth storing | Input may already exist or is not a factual statement |
+
+4. **Input Format Suggestions**:
+
+   ✅ **Good Input** (clear factual statements):
+   ```
+   "I like programming in Python, especially using FastAPI framework"
+   "mcp-ai-memory is an MCP memory server based on Mem0"
+   "The project uses Qdrant as the vector database"
+   ```
+
+   ❌ **Bad Input** (questions or vague descriptions):
+   ```
+   "mcp-ai-memory project features design architecture what"  # Like search keywords, not statements
+   "How is this project?"  # Question, no factual info
+   ```
+
+5. **If It's a Project Knowledge Storage Issue**:
+
+   Ensure you're using the enhanced prompt (default):
+
+   ```env
+   FACT_EXTRACTION_PROMPT_TYPE=default
+   ```
+
+   The original mem0 prompt only supports personal preferences, not project knowledge/technical docs.
 
 ## License
 

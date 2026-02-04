@@ -485,6 +485,60 @@ Skill 会以标准化格式保存记忆：
 "项目支持 SSE 和 stdio 两种传输模式，通过 TRANSPORT 环境变量切换"
 ```
 
+## 记忆提取 Prompt 配置
+
+本项目使用自定义 Prompt 来控制 LLM 如何从输入中提取记忆。默认使用增强型 Prompt，支持存储个人偏好和项目知识/技术文档。
+
+### 内置 Prompt 类型
+
+| 类型 | 说明 | 适用场景 |
+| --- | --- | --- |
+| `default` | 增强型：支持个人偏好 + 项目知识/技术文档 | 需要存储项目知识、API 设计、代码规范等 |
+| `personal` | 原版型：仅支持个人偏好（原 mem0 行为） | 仅需存储用户个人偏好和信息 |
+
+### 配置方式
+
+#### 使用内置类型
+
+```env
+# 使用增强型（默认）
+FACT_EXTRACTION_PROMPT_TYPE=default
+
+# 使用原版型
+FACT_EXTRACTION_PROMPT_TYPE=personal
+```
+
+#### 从文件加载自定义 Prompt
+
+```env
+CUSTOM_FACT_EXTRACTION_PROMPT_FILE=/path/to/custom_prompt.txt
+```
+
+Prompt 文件中可以使用 `{current_date}` 占位符，会自动替换为当前日期。
+
+#### 直接设置自定义 Prompt
+
+```env
+CUSTOM_FACT_EXTRACTION_PROMPT="Your custom prompt here..."
+```
+
+### 配置优先级
+
+1. `CUSTOM_FACT_EXTRACTION_PROMPT`（环境变量直接设置）
+2. `CUSTOM_FACT_EXTRACTION_PROMPT_FILE`（从文件加载）
+3. `FACT_EXTRACTION_PROMPT_TYPE`（使用内置类型）
+
+### 自定义 Prompt 编写指南
+
+自定义 Prompt 应该：
+
+1. 定义需要提取的信息类型
+2. 提供 few-shot 示例
+3. 指定输出格式为 JSON：`{"facts": ["fact1", "fact2", ...]}`
+4. 说明语言检测规则（建议保持输入语言）
+
+参考 `src/mcp_ai_memory/prompts.py` 中的默认 Prompt 模板。
+
 ## 环境变量参考
 
 | 变量 | 描述 | 默认值 |
@@ -503,6 +557,9 @@ Skill 会以标准化格式保存记忆：
 | `QDRANT_PATH` | Qdrant 本地路径 | `./mem0_data` |
 | `DEFAULT_USER_ID` | 默认用户 ID | `default_user` |
 | `LOG_LEVEL` | 日志级别 | `INFO` |
+| `FACT_EXTRACTION_PROMPT_TYPE` | Prompt 类型 (default/personal) | `default` |
+| `CUSTOM_FACT_EXTRACTION_PROMPT_FILE` | 自定义 Prompt 文件路径 | - |
+| `CUSTOM_FACT_EXTRACTION_PROMPT` | 直接设置自定义 Prompt | - |
 
 ## 完全本地部署示例
 
@@ -654,6 +711,64 @@ tail -f /tmp/mcp_server.log
 # 测试连接
 curl http://localhost:8050/sse
 ```
+
+### 问题 4：记忆添加成功但搜索不到
+
+如果 `add_memory` 返回成功，但 `search_memories` 或 `get_memories` 返回空结果：
+
+**可能原因**：LLM 没有从输入中提取出有效的记忆事实。
+
+**排查步骤**：
+
+1. **启用调试日志**：
+
+   ```env
+   LOG_LEVEL=DEBUG
+   ```
+
+2. **查看日志输出**，寻找以下信息：
+
+   ```
+   [DEBUG] No memories extracted by LLM! Input: '...'
+   ```
+
+   或
+
+   ```
+   Memory operation completed for user=xxx, added=0 memories
+   ```
+
+3. **常见原因和解决方案**：
+
+   | 日志信息 | 原因 | 解决方案 |
+   | --- | --- | --- |
+   | `added=0 memories` | LLM 判断输入不包含可存储的信息 | 检查输入格式（见下方） |
+   | `event=NONE` | LLM 判断为重复或不值得存储 | 输入内容可能已存在或不是事实性陈述 |
+
+4. **输入格式建议**：
+
+   ✅ **好的输入**（明确的事实陈述）：
+   ```
+   "我喜欢用 Python 编程，特别是使用 FastAPI 框架"
+   "mcp-ai-memory 是一个基于 Mem0 的 MCP 记忆服务器"
+   "项目使用 Qdrant 作为向量数据库"
+   ```
+
+   ❌ **差的输入**（问句或模糊描述）：
+   ```
+   "mcp-ai-memory 项目 功能 设计 架构 是什么"  # 像搜索关键词，不是陈述
+   "这个项目怎么样？"  # 问句，无事实信息
+   ```
+
+5. **如果是项目知识存储问题**：
+
+   确保使用的是增强型 Prompt（默认）：
+
+   ```env
+   FACT_EXTRACTION_PROMPT_TYPE=default
+   ```
+
+   原版 mem0 的 Prompt 只支持个人偏好，不支持项目知识/技术文档。
 
 ## License
 

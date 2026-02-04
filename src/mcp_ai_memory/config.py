@@ -276,6 +276,44 @@ def create_mem0_client() -> Memory:
     # Build vector store configuration
     config["vector_store"] = _build_vector_store_config()
 
+    # Use custom fact extraction prompt to support project knowledge
+    # This allows storing not just personal preferences but also technical documentation
+    custom_prompt_env = get_env("CUSTOM_FACT_EXTRACTION_PROMPT")
+    custom_prompt_file = get_env("CUSTOM_FACT_EXTRACTION_PROMPT_FILE")
+    prompt_type = get_env("FACT_EXTRACTION_PROMPT_TYPE", "default")
+    
+    if custom_prompt_env:
+        # Priority 1: Direct prompt from environment variable
+        config["custom_fact_extraction_prompt"] = custom_prompt_env
+        logger.info("Using custom fact extraction prompt from environment variable")
+    elif custom_prompt_file:
+        # Priority 2: Load prompt from file
+        try:
+            from .prompts import get_custom_prompt_from_file
+        except ImportError:
+            from prompts import get_custom_prompt_from_file
+        
+        file_prompt = get_custom_prompt_from_file(custom_prompt_file)
+        if file_prompt:
+            config["custom_fact_extraction_prompt"] = file_prompt
+            logger.info(f"Using custom fact extraction prompt from file: {custom_prompt_file}")
+        else:
+            logger.warning(f"Failed to load prompt from file: {custom_prompt_file}, using default")
+            try:
+                from .prompts import get_fact_extraction_prompt
+            except ImportError:
+                from prompts import get_fact_extraction_prompt
+            config["custom_fact_extraction_prompt"] = get_fact_extraction_prompt(prompt_type)
+    else:
+        # Priority 3: Use built-in prompt by type
+        try:
+            from .prompts import get_fact_extraction_prompt
+        except ImportError:
+            from prompts import get_fact_extraction_prompt
+        
+        config["custom_fact_extraction_prompt"] = get_fact_extraction_prompt(prompt_type)
+        logger.info(f"Using built-in fact extraction prompt (type={prompt_type})")
+
     # Optional: Graph memory configuration
     if get_env_bool("ENABLE_GRAPH_MEMORY", False):
         config["graph_store"] = {

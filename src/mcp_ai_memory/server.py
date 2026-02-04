@@ -96,6 +96,42 @@ def create_server() -> FastMCP:
             return result
         return []
 
+    def _analyze_add_result(result: Any, text: str, user_id: str) -> None:
+        """Analyze and log the mem0 add result for debugging."""
+        logger.debug(f"[DEBUG] add_memory input text: {text[:200]}...")
+        logger.debug(f"[DEBUG] add_memory raw result: {result}")
+        
+        if isinstance(result, dict):
+            # Check for 'results' key (standard mem0 response)
+            results = result.get("results", [])
+            if not results:
+                logger.warning(
+                    f"[DEBUG] No memories extracted by LLM! "
+                    f"Input: '{text[:100]}...' | "
+                    f"This usually means the LLM did not find extractable facts/preferences in the input."
+                )
+            else:
+                for idx, mem in enumerate(results):
+                    event = mem.get("event", "UNKNOWN")
+                    memory_text = mem.get("memory", mem.get("text", "N/A"))
+                    memory_id = mem.get("id", "N/A")
+                    logger.info(
+                        f"[DEBUG] Memory[{idx}] event={event}, id={memory_id}, "
+                        f"text='{memory_text[:100]}...'"
+                    )
+                    if event == "NONE":
+                        logger.warning(
+                            f"[DEBUG] Memory event=NONE means LLM decided not to store this. "
+                            f"Possible reasons: duplicate, not a fact/preference, or LLM judgment."
+                        )
+            
+            # Log any relations (for graph memory)
+            relations = result.get("relations", [])
+            if relations:
+                logger.debug(f"[DEBUG] Relations extracted: {relations}")
+        else:
+            logger.warning(f"[DEBUG] Unexpected result type: {type(result)}")
+
     @server.tool(
         description="Store a new preference, fact, or conversation snippet in long-term memory."
     )
@@ -137,18 +173,36 @@ def create_server() -> FastMCP:
                 if messages
                 else [{"role": "user", "content": text}]
             )
-            kwargs: Dict[str, Any] = {"user_id": user_id or DEFAULT_USER_ID}
+            effective_user_id = user_id or DEFAULT_USER_ID
+            kwargs: Dict[str, Any] = {"user_id": effective_user_id}
             if agent_id:
                 kwargs["agent_id"] = agent_id
             if run_id:
                 kwargs["run_id"] = run_id
             if metadata:
                 kwargs["metadata"] = metadata
+            
+            logger.info(f"[DEBUG] Calling mem0.add with conversation: {conversation}")
             result = client.add(conversation, **kwargs)
-            logger.info(f"Memory added for user={kwargs.get('user_id')}")
+            
+            # Analyze the result for debugging
+            _analyze_add_result(result, text, effective_user_id)
+            
+            # Count actual memories added
+            added_count = 0
+            if isinstance(result, dict) and "results" in result:
+                added_count = sum(
+                    1 for r in result.get("results", []) 
+                    if r.get("event") == "ADD"
+                )
+            
+            logger.info(
+                f"Memory operation completed for user={effective_user_id}, "
+                f"added={added_count} memories"
+            )
             return _safe_json(result)
         except Exception as e:
-            logger.error(f"Error adding memory: {e}")
+            logger.error(f"Error adding memory: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
     @server.tool(
