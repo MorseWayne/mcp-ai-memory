@@ -10,6 +10,7 @@
 - **丰富的工具集**: 添加、搜索、更新、删除记忆等完整 CRUD 操作
 - **双传输模式**: 支持 SSE (HTTP) 和 stdio 两种传输协议
 - **Docker 支持**: 提供完整的容器化部署方案
+- **Cursor Agent Skill**: 内置智能 Skill，自动同步项目知识到长期记忆
 
 ## 提供的工具
 
@@ -347,6 +348,65 @@ stdio 模式无需预先启动服务，客户端会自动拉起进程。
 "删除关于我饮食偏好的记录"
 → 先 search_memories 找到相关记忆
 → 再 delete_memory(memory_id="xxx")
+```
+
+## Cursor Agent Skill（推荐）
+
+本项目提供了一个 Cursor Agent Skill，可以让 AI 助手自动管理项目知识的长期记忆。
+
+### 功能特点
+
+- **自动触发**：当用户询问项目信息（如"帮我熟悉这个项目"、"介绍一下这个项目的功能"）时自动激活
+- **变更同步**：当修改代码、接口、文档后，自动将变更同步到记忆系统
+- **智能判断**：自动选择添加、更新或删除记忆的操作
+
+### 安装方式
+
+#### 方式一：项目级安装（推荐）
+
+如果你克隆了本项目，Skill 已经包含在 `.cursor/skills/project-memory-sync/` 目录中，Cursor 会自动识别。
+
+#### 方式二：全局安装
+
+将 Skill 复制到个人目录，所有项目都可使用：
+
+```bash
+mkdir -p ~/.cursor/skills/project-memory-sync
+cp .cursor/skills/project-memory-sync/SKILL.md ~/.cursor/skills/project-memory-sync/
+```
+
+### 使用场景
+
+#### 场景 A：了解项目
+
+```
+用户: "帮我熟悉一下这个项目"
+用户: "这个项目的核心功能是什么？"
+用户: "介绍一下项目的设计架构"
+
+→ Agent 会先搜索已有记忆，结合代码分析回答
+→ 如果发现新的重要信息，会自动保存到记忆
+```
+
+#### 场景 B：代码变更后
+
+```
+用户: (修改了 API 接口)
+用户: (新增了一个功能模块)
+用户: (删除了某个功能)
+
+→ Agent 会自动分析变更内容
+→ 选择 add_memory / update_memory / delete_memory 同步记忆
+```
+
+### 记忆格式示例
+
+Skill 会以标准化格式保存记忆：
+
+```
+"mcp-ai-memory 项目使用 Mem0 库实现长期记忆存储，支持 Qdrant 和 pgvector 向量库"
+"mcp-ai-memory 的 add_memory 接口支持 text、messages、user_id、metadata 等参数"
+"项目支持 SSE 和 stdio 两种传输模式，通过 TRANSPORT 环境变量切换"
 ```
 
 ## 环境变量参考
