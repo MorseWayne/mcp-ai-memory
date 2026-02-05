@@ -4,7 +4,10 @@ This module contains all prompt configurations used by mem0 for fact extraction.
 You can customize these prompts to change how memories are extracted and stored.
 """
 
+import logging
 from datetime import datetime
+
+logger = logging.getLogger("mcp_ai_memory")
 
 
 def get_current_date() -> str:
@@ -162,13 +165,18 @@ def get_custom_prompt_from_file(file_path: str) -> str | None:
         file_path: Path to the prompt file.
     
     Returns:
-        The prompt content with {current_date} replaced, or None if file not found.
+        The prompt content with {current_date} replaced, or None if loading fails.
     """
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             template = f.read()
         return template.format(current_date=get_current_date())
     except FileNotFoundError:
+        logger.warning(f"Prompt file not found: {file_path}")
         return None
-    except Exception:
+    except KeyError as e:
+        logger.error(f"Invalid placeholder in prompt file {file_path}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to load prompt from {file_path}: {e}", exc_info=True)
         return None

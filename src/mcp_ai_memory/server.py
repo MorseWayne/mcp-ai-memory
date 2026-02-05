@@ -16,12 +16,8 @@ from mcp.server.fastmcp import Context, FastMCP
 from mem0 import Memory
 from pydantic import Field
 
-try:
-    from .config import create_mem0_client, DEFAULT_USER_ID
-    from .schemas import ToolMessage
-except ImportError:
-    from config import create_mem0_client, DEFAULT_USER_ID
-    from schemas import ToolMessage
+from .config import create_mem0_client, DEFAULT_USER_ID
+from .schemas import ToolMessage
 
 load_dotenv()
 
@@ -40,16 +36,36 @@ class Mem0Context:
 
 # Global singleton for Mem0 client to avoid multiple initializations in SSE mode
 _mem0_client: Optional[Memory] = None
-_mem0_lock = asyncio.Lock()
+_mem0_lock: Optional[asyncio.Lock] = None
+
+
+def _get_mem0_lock() -> asyncio.Lock:
+    """Get or create the asyncio lock for Mem0 client initialization.
+    
+    asyncio.Lock must be created within an event loop context,
+    so we lazily initialize it on first use.
+    """
+    global _mem0_lock
+    if _mem0_lock is None:
+        _mem0_lock = asyncio.Lock()
+    return _mem0_lock
 
 
 async def _get_or_create_mem0_client() -> Memory:
-    """Get or create the singleton Mem0 client."""
+    """Get or create the singleton Mem0 client.
+    
+    Uses double-checked locking pattern with asyncio.Lock for async safety.
+    Unlike threading.Lock, asyncio.Lock doesn't block the event loop.
+    """
     global _mem0_client
-    async with _mem0_lock:
+    # Fast path: already initialized
+    if _mem0_client is not None:
+        return _mem0_client
+    # Slow path: need to initialize with lock
+    async with _get_mem0_lock():
         if _mem0_client is None:
             logger.info("Initializing Mem0 client...")
-            _mem0_client = create_mem0_client()
+            _mem0_client = await asyncio.to_thread(create_mem0_client)
             logger.info("Mem0 client initialized successfully")
         return _mem0_client
 
@@ -77,14 +93,26 @@ def create_server() -> FastMCP:
         port=int(os.getenv("PORT", "8050")),
     )
 
-    def _get_client(ctx: Context) -> Memory:
-        """Extract Mem0 client from context."""
+    def _get_client(ctx: Optional[Context]) -> Memory:
+        """Extract Mem0 client from context.
+        
+        Args:
+            ctx: The MCP context containing the Mem0 client.
+            
+        Returns:
+            The Mem0 Memory client.
+            
+        Raises:
+            RuntimeError: If context is None or invalid.
+        """
+        if ctx is None:
+            raise RuntimeError("Context is required but got None")
         return ctx.request_context.lifespan_context.mem0_client
 
     def _safe_json(data: Any) -> str:
         """Safely convert data to JSON string."""
         try:
-            return json.dumps(data, ensure_ascii=False, indent=2, default=str)
+            return json.dumps(data, ensure_ascii=False, default=str)
         except Exception as e:
             return json.dumps({"error": f"JSON serialization failed: {str(e)}"})
 
@@ -96,41 +124,65 @@ def create_server() -> FastMCP:
             return result
         return []
 
+    def _build_scope_kwargs(
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        **extra: Any,
+    ) -> Dict[str, Any]:
+        """Build kwargs dict for Mem0 calls with scope filters.
+        
+        Args:
+            user_id: User ID filter, defaults to DEFAULT_USER_ID if None.
+            agent_id: Optional agent ID filter.
+            run_id: Optional run ID filter.
+            **extra: Additional keyword arguments to include.
+            
+        Returns:
+            Dict with scope filters for Mem0 API calls.
+        """
+        kwargs: Dict[str, Any] = {"user_id": user_id or DEFAULT_USER_ID}
+        if agent_id:
+            kwargs["agent_id"] = agent_id
+        if run_id:
+            kwargs["run_id"] = run_id
+        kwargs.update(extra)
+        return kwargs
+
     def _analyze_add_result(result: Any, text: str, user_id: str) -> None:
         """Analyze and log the mem0 add result for debugging."""
-        logger.debug(f"[DEBUG] add_memory input text: {text[:200]}...")
-        logger.debug(f"[DEBUG] add_memory raw result: {result}")
+        logger.debug(f"add_memory input text: {text[:200]}...")
+        logger.debug(f"add_memory raw result: {result}")
         
         if isinstance(result, dict):
             # Check for 'results' key (standard mem0 response)
             results = result.get("results", [])
             if not results:
-                logger.warning(
-                    f"[DEBUG] No memories extracted by LLM! "
-                    f"Input: '{text[:100]}...' | "
-                    f"This usually means the LLM did not find extractable facts/preferences in the input."
+                logger.debug(
+                    f"No memories extracted by LLM. Input: '{text[:100]}...' | "
+                    f"This usually means the LLM did not find extractable facts/preferences."
                 )
             else:
                 for idx, mem in enumerate(results):
                     event = mem.get("event", "UNKNOWN")
                     memory_text = mem.get("memory", mem.get("text", "N/A"))
                     memory_id = mem.get("id", "N/A")
-                    logger.info(
-                        f"[DEBUG] Memory[{idx}] event={event}, id={memory_id}, "
+                    logger.debug(
+                        f"Memory[{idx}] event={event}, id={memory_id}, "
                         f"text='{memory_text[:100]}...'"
                     )
                     if event == "NONE":
-                        logger.warning(
-                            f"[DEBUG] Memory event=NONE means LLM decided not to store this. "
+                        logger.debug(
+                            f"Memory event=NONE means LLM decided not to store this. "
                             f"Possible reasons: duplicate, not a fact/preference, or LLM judgment."
                         )
             
             # Log any relations (for graph memory)
             relations = result.get("relations", [])
             if relations:
-                logger.debug(f"[DEBUG] Relations extracted: {relations}")
+                logger.debug(f"Relations extracted: {relations}")
         else:
-            logger.warning(f"[DEBUG] Unexpected result type: {type(result)}")
+            logger.debug(f"Unexpected result type: {type(result)}")
 
     @server.tool(
         description="Store a new preference, fact, or conversation snippet in long-term memory."
@@ -163,7 +215,7 @@ def create_server() -> FastMCP:
             Optional[Dict[str, Any]],
             Field(default=None, description="Attach arbitrary metadata JSON to the memory."),
         ] = None,
-        ctx: Context = None,
+        ctx: Optional[Context] = None,
     ) -> str:
         """Write durable information to local storage."""
         try:
@@ -173,16 +225,12 @@ def create_server() -> FastMCP:
                 if messages
                 else [{"role": "user", "content": text}]
             )
-            effective_user_id = user_id or DEFAULT_USER_ID
-            kwargs: Dict[str, Any] = {"user_id": effective_user_id}
-            if agent_id:
-                kwargs["agent_id"] = agent_id
-            if run_id:
-                kwargs["run_id"] = run_id
+            kwargs = _build_scope_kwargs(user_id, agent_id, run_id)
+            effective_user_id = kwargs["user_id"]
             if metadata:
                 kwargs["metadata"] = metadata
             
-            logger.info(f"[DEBUG] Calling mem0.add with conversation: {conversation}")
+            logger.debug(f"Calling mem0.add with conversation: {conversation}")
             # Run blocking call in thread pool for concurrency support
             result = await asyncio.to_thread(client.add, conversation, **kwargs)
             
@@ -222,16 +270,12 @@ def create_server() -> FastMCP:
             ),
         ] = None,
         limit: Annotated[int, Field(default=100, description="Maximum number of results to return.")] = 100,
-        ctx: Context = None,
+        ctx: Optional[Context] = None,
     ) -> str:
         """Semantic search against existing memories."""
         try:
             client = _get_client(ctx)
-            kwargs: Dict[str, Any] = {"limit": limit, "user_id": user_id or DEFAULT_USER_ID}
-            if agent_id:
-                kwargs["agent_id"] = agent_id
-            if run_id:
-                kwargs["run_id"] = run_id
+            kwargs = _build_scope_kwargs(user_id, agent_id, run_id, limit=limit)
             if filters:
                 kwargs["filters"] = filters
             # Run blocking call in thread pool for concurrency support
@@ -240,7 +284,7 @@ def create_server() -> FastMCP:
             logger.info(f"Search returned {len(memories)} results for query: {query[:50]}...")
             return _safe_json({"results": memories, "count": len(memories)})
         except Exception as e:
-            logger.error(f"Error searching memories: {e}")
+            logger.error(f"Error searching memories: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
     @server.tool(
@@ -250,29 +294,25 @@ def create_server() -> FastMCP:
         user_id: Annotated[Optional[str], Field(default=None, description="Filter by user ID.")] = None,
         agent_id: Annotated[Optional[str], Field(default=None, description="Filter by agent ID.")] = None,
         run_id: Annotated[Optional[str], Field(default=None, description="Filter by run ID.")] = None,
-        ctx: Context = None,
+        ctx: Optional[Context] = None,
     ) -> str:
         """List memories via structured filters."""
         try:
             client = _get_client(ctx)
-            kwargs: Dict[str, Any] = {"user_id": user_id or DEFAULT_USER_ID}
-            if agent_id:
-                kwargs["agent_id"] = agent_id
-            if run_id:
-                kwargs["run_id"] = run_id
+            kwargs = _build_scope_kwargs(user_id, agent_id, run_id)
             # Run blocking call in thread pool for concurrency support
             result = await asyncio.to_thread(client.get_all, **kwargs)
             memories = _extract_memories(result)
             logger.info(f"Retrieved {len(memories)} memories for user={kwargs.get('user_id')}")
             return _safe_json({"results": memories, "count": len(memories)})
         except Exception as e:
-            logger.error(f"Error getting memories: {e}")
+            logger.error(f"Error getting memories: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
     @server.tool(description="Fetch a single memory by its memory_id.")
     async def get_memory(
         memory_id: Annotated[str, Field(description="Exact memory_id to fetch.")],
-        ctx: Context = None,
+        ctx: Optional[Context] = None,
     ) -> str:
         """Retrieve a single memory once you know its ID."""
         try:
@@ -282,14 +322,14 @@ def create_server() -> FastMCP:
             logger.info(f"Retrieved memory: {memory_id}")
             return _safe_json(result)
         except Exception as e:
-            logger.error(f"Error getting memory {memory_id}: {e}")
+            logger.error(f"Error getting memory {memory_id}: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
     @server.tool(description="Overwrite an existing memory's text.")
     async def update_memory(
         memory_id: Annotated[str, Field(description="Exact memory_id to overwrite.")],
         text: Annotated[str, Field(description="Replacement text for the memory.")],
-        ctx: Context = None,
+        ctx: Optional[Context] = None,
     ) -> str:
         """Overwrite an existing memory's text after confirming the exact memory_id."""
         try:
@@ -299,13 +339,13 @@ def create_server() -> FastMCP:
             logger.info(f"Updated memory: {memory_id}")
             return _safe_json(result)
         except Exception as e:
-            logger.error(f"Error updating memory {memory_id}: {e}")
+            logger.error(f"Error updating memory {memory_id}: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
     @server.tool(description="Delete a single memory by its memory_id.")
     async def delete_memory(
         memory_id: Annotated[str, Field(description="Exact memory_id to delete.")],
-        ctx: Context = None,
+        ctx: Optional[Context] = None,
     ) -> str:
         """Delete a single memory."""
         try:
@@ -315,7 +355,7 @@ def create_server() -> FastMCP:
             logger.info(f"Deleted memory: {memory_id}")
             return _safe_json(result)
         except Exception as e:
-            logger.error(f"Error deleting memory {memory_id}: {e}")
+            logger.error(f"Error deleting memory {memory_id}: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
     @server.tool(description="Bulk delete memories by scope. WARNING: Due to a bug in mem0 1.0.x, this may delete ALL memories regardless of filters! Use with extreme caution.")
@@ -323,7 +363,7 @@ def create_server() -> FastMCP:
         user_id: Annotated[Optional[str], Field(default=None, description="User scope to delete.")] = None,
         agent_id: Annotated[Optional[str], Field(default=None, description="Agent scope to delete.")] = None,
         run_id: Annotated[Optional[str], Field(default=None, description="Run scope to delete.")] = None,
-        ctx: Context = None,
+        ctx: Optional[Context] = None,
     ) -> str:
         """Delete multiple memories by scope.
         
@@ -333,7 +373,7 @@ def create_server() -> FastMCP:
         """
         # Log warning about the known bug
         logger.warning(
-            "⚠️ delete_all_memories called. Due to mem0 1.0.x bug, this may delete ALL memories! "
+            "delete_all_memories called. Due to mem0 1.0.x bug, this may delete ALL memories! "
             f"Requested filters: user_id={user_id}, agent_id={agent_id}, run_id={run_id}"
         )
         
@@ -351,13 +391,13 @@ def create_server() -> FastMCP:
             logger.info("Bulk delete executed")
             return _safe_json(result)
         except Exception as e:
-            logger.error(f"Error bulk deleting memories: {e}")
+            logger.error(f"Error bulk deleting memories: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
     @server.tool(description="View change history for a memory.")
     async def get_memory_history(
         memory_id: Annotated[str, Field(description="Memory ID to get history for.")],
-        ctx: Context = None,
+        ctx: Optional[Context] = None,
     ) -> str:
         """Get change history for a memory."""
         try:
@@ -367,11 +407,11 @@ def create_server() -> FastMCP:
             logger.info(f"History fetched for memory: {memory_id}")
             return _safe_json(result)
         except Exception as e:
-            logger.error(f"Error getting memory history {memory_id}: {e}")
+            logger.error(f"Error getting memory history {memory_id}: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
     @server.tool(description="Reset all memories. Use with caution!")
-    async def reset_memories(ctx: Context = None) -> str:
+    async def reset_memories(ctx: Optional[Context] = None) -> str:
         """Reset all stored memories."""
         try:
             client = _get_client(ctx)
@@ -380,7 +420,7 @@ def create_server() -> FastMCP:
             logger.warning("All memories have been reset")
             return _safe_json(result)
         except Exception as e:
-            logger.error(f"Error resetting memories: {e}")
+            logger.error(f"Error resetting memories: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
     @server.prompt()

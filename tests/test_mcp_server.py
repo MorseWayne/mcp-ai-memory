@@ -27,7 +27,7 @@ import uuid
 from typing import Any, Dict, Optional
 
 from mcp import ClientSession
-from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamable_http_client
 
 
 # API 调用失败的错误关键词
@@ -73,7 +73,7 @@ async def test_mcp_server(base_url: str, skip_api: bool = False):
         # 连接到 MCP 服务器
         print("\n📡 连接到 MCP 服务器...")
         
-        async with sse_client(f"{base_url}/sse") as (read_stream, write_stream):
+        async with streamable_http_client(f"{base_url}/mcp") as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 # 初始化会话
                 await session.initialize()
@@ -408,7 +408,7 @@ async def simple_connectivity_test(base_url: str) -> bool:
     print("\n📡 检查服务器连接性...")
     
     try:
-        async with sse_client(f"{base_url}/sse") as (read_stream, write_stream):
+        async with streamable_http_client(f"{base_url}/mcp") as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 print(f"✅ MCP 服务器连接正常 ({base_url})")
@@ -428,7 +428,7 @@ async def list_available_tools(base_url: str):
     print("\n📋 获取可用工具列表...")
     
     try:
-        async with sse_client(f"{base_url}/sse") as (read_stream, write_stream):
+        async with streamable_http_client(f"{base_url}/mcp") as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 
@@ -460,7 +460,7 @@ async def list_prompts(base_url: str):
     print("\n📝 获取可用 prompts...")
     
     try:
-        async with sse_client(f"{base_url}/sse") as (read_stream, write_stream):
+        async with streamable_http_client(f"{base_url}/mcp") as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 
