@@ -35,7 +35,7 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 
 ### 1. 查询项目信息时
 
-```
+```text
 步骤 0: 确定目标项目
 → 如果用户明确指定了项目名 → 直接使用
 → 如果在项目工作区且用户说"本项目" → 使用当前项目名
@@ -59,7 +59,7 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 
 ### 2. 修改代码/文档后
 
-```
+```text
 步骤 1: 分析变更内容
 → 识别：新增功能 / 修改功能 / 删除功能
 
@@ -155,7 +155,7 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 
 当需要查找所有相关记忆时（如：更新/删除前确认、全面了解项目信息），**必须循环分页直到 `has_more=false`**：
 
-```
+```text
 步骤 1: 首次搜索
 → search_memories(query="...", filters={...}, limit=20, offset=0)
 → 检查返回的 has_more
@@ -191,11 +191,19 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 **filters 参数说明**：
 
 - `filters` 支持按 metadata 字段过滤，最常用的是按 `project` 过滤
-- 支持的操作符：
-  - 精确匹配：`{"project": "mcp-ai-memory"}`
-  - 等于：`{"project": {"eq": "mcp-ai-memory"}}`
-  - 不等于：`{"project": {"ne": "other-project"}}`
-  - 在列表中：`{"project": {"in": ["proj1", "proj2"]}}`
+- ⚠️ **重要兼容性说明（Cursor 常见踩坑）**：
+  - mem0 的 `Memory.search()` 文档里描述了 `eq/ne/in/...` 等“增强 filters”，但 **在 mem0 1.0.3 + Qdrant 向量库实现中**，Qdrant 的过滤器构造只支持：
+    - **标量等值匹配**：`{"project": "xxx"}`
+    - **范围查询（仅 gte/lte 组合）**：`{"some_number": {"gte": 1, "lte": 10}}`
+  - 其他 dict 结构（例如 `{"project": {"in": [...]}}` / `{"project": {"eq": ...}}` / `{"project": {"ne": ...}}`）会被当成 “MatchValue.value=一个 dict” 传入，从而触发 pydantic 校验错误（你看到的 `MatchValue` validation error）。
+  - 因此在本项目中，**不要让 Cursor 发起**上述 dict 操作符写法；推荐只使用 **精确匹配**（标量）：`{"project": "mcp-ai-memory"}`
+
+**多项目过滤的正确方式（替代 `in`）**：
+
+- 需要查多个项目时，使用“**多次调用 + 合并结果**”：
+  - 对每个项目分别调用 `search_memories(query=..., filters={"project": "<name>"}, limit=..., offset=0)`
+  - 分页取全（检查 `has_more`，offset += limit）
+  - 将多次返回的 `results` 合并后再做去重/排序（按需要在 Agent 侧处理）
 
 **正确示例**：
 
@@ -204,13 +212,6 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 {
   "query": "核心功能",
   "filters": {"project": "mcp-ai-memory"},
-  "limit": 20
-}
-
-// 搜索多个项目的 API 设计
-{
-  "query": "API 接口设计",
-  "filters": {"project": {"in": ["mcp-ai-memory", "my-project"]}},
   "limit": 20
 }
 ```
@@ -223,6 +224,9 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
   "query": "核心功能",
   "limit": 20
 }
+
+// ❌ 不要使用 dict 操作符写法（mem0 可能会校验失败）
+// 如：{"project": {"in": ["proj1", "proj2"]}} / {"project": {"eq": "proj"}} / {"project": {"ne": "proj"}}
 
 // ❌ 只取第一页就停止，可能遗漏重要记忆
 // 当 has_more=true 时，必须继续分页查询！
@@ -246,7 +250,7 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 
 **询问用户的方式**：
 
-```
+```text
 我需要搜索长期记忆来回答你的问题。请告诉我要搜索哪个项目的记忆？
 
 可选：
@@ -321,7 +325,7 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 
 ### 有效的记忆示例
 
-```
+```text
 ✅ "mcp-ai-memory 项目使用 Mem0 库实现长期记忆存储，支持 Qdrant 和 pgvector 向量库"
 ✅ "mcp-ai-memory 的 add_memory 接口支持 text、messages、user_id、metadata 等参数"
 ✅ "项目支持 SSE 和 stdio 两种传输模式，通过 TRANSPORT 环境变量切换"
@@ -329,7 +333,7 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 
 ### 无效的记忆示例
 
-```
+```text
 ❌ "修改了代码"（太模糊）
 ❌ "添加了一些功能"（没有具体内容）
 ❌ "文件在 src/server.py"（仅位置信息，无实质内容）
