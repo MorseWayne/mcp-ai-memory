@@ -207,14 +207,21 @@ def create_server() -> FastMCP:
             return _safe_json({"error": str(e)})
 
     @server.tool(
-        description="Semantic search across existing memories."
+        description="Semantic search across existing memories. Supports filtering by project via filters parameter."
     )
     async def search_memories(
         query: Annotated[str, Field(description="Natural language description of what to find.")],
         user_id: Annotated[Optional[str], Field(default=None, description="Filter by user ID.")] = None,
         agent_id: Annotated[Optional[str], Field(default=None, description="Filter by agent ID.")] = None,
         run_id: Annotated[Optional[str], Field(default=None, description="Filter by run ID.")] = None,
-        limit: Annotated[int, Field(default=10, description="Maximum number of results to return.")] = 10,
+        filters: Annotated[
+            Optional[Dict[str, Any]],
+            Field(
+                default=None,
+                description="Metadata filters for search. Common usage: {'project': 'project-name'} to filter by project. Supports operators: exact match {'key': 'value'}, equals {'key': {'eq': 'value'}}, not equals {'key': {'ne': 'value'}}, in list {'key': {'in': ['val1', 'val2']}}.",
+            ),
+        ] = None,
+        limit: Annotated[int, Field(default=100, description="Maximum number of results to return.")] = 100,
         ctx: Context = None,
     ) -> str:
         """Semantic search against existing memories."""
@@ -225,6 +232,8 @@ def create_server() -> FastMCP:
                 kwargs["agent_id"] = agent_id
             if run_id:
                 kwargs["run_id"] = run_id
+            if filters:
+                kwargs["filters"] = filters
             # Run blocking call in thread pool for concurrency support
             result = await asyncio.to_thread(client.search, query, **kwargs)
             memories = _extract_memories(result)
