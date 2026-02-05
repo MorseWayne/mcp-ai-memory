@@ -255,7 +255,7 @@ def create_server() -> FastMCP:
             return _safe_json({"error": str(e)})
 
     @server.tool(
-        description="Semantic search across existing memories. Supports filtering by project via filters parameter."
+        description="Semantic search across existing memories. Supports pagination via limit/offset. Use has_more to check if more results exist."
     )
     async def search_memories(
         query: Annotated[str, Field(description="Natural language description of what to find.")],
@@ -269,20 +269,43 @@ def create_server() -> FastMCP:
                 description="Metadata filters for search. Common usage: {'project': 'project-name'} to filter by project. Supports operators: exact match {'key': 'value'}, equals {'key': {'eq': 'value'}}, not equals {'key': {'ne': 'value'}}, in list {'key': {'in': ['val1', 'val2']}}.",
             ),
         ] = None,
-        limit: Annotated[int, Field(default=100, description="Maximum number of results to return.")] = 100,
+        limit: Annotated[int, Field(default=20, description="Maximum number of results per page. Default 20.")] = 20,
+        offset: Annotated[int, Field(default=0, description="Number of results to skip for pagination. Default 0.")] = 0,
         ctx: Optional[Context] = None,
     ) -> str:
-        """Semantic search against existing memories."""
+        """Semantic search against existing memories with pagination support.
+        
+        Returns:
+            JSON with results, count, offset, limit, and has_more flag.
+            When has_more is True, call again with offset += limit to get next page.
+        """
         try:
             client = _get_client(ctx)
-            kwargs = _build_scope_kwargs(user_id, agent_id, run_id, limit=limit)
+            # Fetch limit + 1 to detect if more results exist
+            fetch_limit = limit + offset + 1
+            kwargs = _build_scope_kwargs(user_id, agent_id, run_id, limit=fetch_limit)
             if filters:
                 kwargs["filters"] = filters
             # Run blocking call in thread pool for concurrency support
             result = await asyncio.to_thread(client.search, query, **kwargs)
-            memories = _extract_memories(result)
-            logger.info(f"Search returned {len(memories)} results for query: {query[:50]}...")
-            return _safe_json({"results": memories, "count": len(memories)})
+            all_memories = _extract_memories(result)
+            
+            # Apply pagination
+            total_available = len(all_memories)
+            paginated = all_memories[offset:offset + limit]
+            has_more = total_available > offset + limit
+            
+            logger.info(
+                f"Search returned {len(paginated)} results (offset={offset}, limit={limit}, "
+                f"has_more={has_more}) for query: {query[:50]}..."
+            )
+            return _safe_json({
+                "results": paginated,
+                "count": len(paginated),
+                "offset": offset,
+                "limit": limit,
+                "has_more": has_more,
+            })
         except Exception as e:
             logger.error(f"Error searching memories: {e}", exc_info=True)
             return _safe_json({"error": str(e)})

@@ -31,7 +31,7 @@
 
 ### search_memories
 
-语义搜索现有记忆。
+语义搜索现有记忆，支持分页。
 
 | 参数 | 类型 | 必填 | 描述 |
 | --- | --- | --- | --- |
@@ -39,7 +39,23 @@
 | `user_id` | string | - | 按用户 ID 过滤 |
 | `agent_id` | string | - | 按 Agent ID 过滤 |
 | `run_id` | string | - | 按运行 ID 过滤 |
-| `limit` | int | - | 最大返回结果数，默认 10 |
+| `filters` | object | - | 元数据过滤器，如 `{"project": "项目名"}` |
+| `limit` | int | - | 每页最大返回结果数，默认 20 |
+| `offset` | int | - | 跳过的结果数，用于分页，默认 0 |
+
+**返回格式**：
+
+```json
+{
+  "results": [...],
+  "count": 20,
+  "offset": 0,
+  "limit": 20,
+  "has_more": true
+}
+```
+
+当 `has_more` 为 `true` 时，可通过 `offset += limit` 获取下一页。
 
 ### get_memories
 

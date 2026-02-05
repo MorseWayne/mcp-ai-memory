@@ -208,16 +208,36 @@ async def test_mcp_server(base_url: str, skip_api: bool = False):
                         "query": "编程语言和开发框架",
                         "user_id": test_user_id,
                         "limit": 5,
+                        "offset": 0,
                     })
                     
                     if result and "error" not in result:
                         count = result.get("count", 0)
-                        print(f"   ✅ 搜索成功，找到 {count} 条相关记忆")
+                        has_more = result.get("has_more", False)
+                        offset = result.get("offset", 0)
+                        limit = result.get("limit", 5)
+                        print(f"   ✅ 搜索成功，本页 {count} 条记忆 (offset={offset}, limit={limit}, has_more={has_more})")
                         memories = result.get("results", [])
                         for i, mem in enumerate(memories[:3]):
                             mem_text = mem.get("memory", mem.get("text", ""))[:50]
                             score = mem.get("score", "N/A")
                             print(f"   {i+1}. [相关度: {score}] {mem_text}...")
+                        
+                        # 测试分页：如果有更多结果，获取下一页
+                        if has_more:
+                            print("\n   📄 测试分页: 获取下一页...")
+                            result2 = await call_tool("search_memories", {
+                                "query": "编程语言和开发框架",
+                                "user_id": test_user_id,
+                                "limit": 5,
+                                "offset": 5,
+                            })
+                            if result2 and "error" not in result2:
+                                count2 = result2.get("count", 0)
+                                has_more2 = result2.get("has_more", False)
+                                print(f"   ✅ 第二页: {count2} 条记忆 (has_more={has_more2})")
+                            else:
+                                print(f"   ⚠️ 分页测试失败: {result2}")
                     elif is_api_error(result):
                         print(f"   ⚠️ Embedding API 连接失败: {result.get('error', '')}")
                         print("   💡 请检查 .env 中的 EMBEDDING_BASE_URL 和 EMBEDDING_API_KEY 配置")

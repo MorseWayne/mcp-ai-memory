@@ -41,9 +41,11 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 → 如果在项目工作区且用户说"本项目" → 使用当前项目名
 → 如果无法确定 → 询问用户要搜索哪个项目
 
-步骤 1: 搜索已有记忆
-→ 调用 search_memories(query="功能/设计/架构", filters={"project": "项目名"})
+步骤 1: 搜索已有记忆（需完整分页）
+→ 调用 search_memories(query="功能/设计/架构", filters={"project": "项目名"}, limit=20, offset=0)
 → 必须使用 filters 参数按项目过滤
+→ ⚠️ 检查返回的 has_more 字段，如果为 true 则继续分页查询
+→ 重复调用 offset += 20 直到 has_more=false，确保获取完整结果
 
 步骤 2: 分析代码库
 → 阅读相关源码，理解当前实现
@@ -61,9 +63,10 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 步骤 1: 分析变更内容
 → 识别：新增功能 / 修改功能 / 删除功能
 
-步骤 2: 搜索相关记忆
+步骤 2: 搜索相关记忆（需完整分页）
 → 调用 search_memories(query="变更相关的功能/模块名", filters={"project": "项目名"})
 → 必须使用 filters 参数按项目过滤，避免影响其他项目的记忆
+→ ⚠️ 必须分页查询直到 has_more=false，确保找到所有相关记忆再操作
 
 步骤 3: 选择操作
 
@@ -71,11 +74,11 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
   → add_memory(text="[项目名] 新增了 [功能描述]", metadata={"project": "项目名", ...})
 
 如果是【修改功能】：
-  → 找到相关记忆 ID
+  → 找到相关记忆 ID（从完整分页结果中筛选）
   → update_memory(memory_id="xxx", text="[更新后的描述]")
 
 如果是【删除功能】：
-  → 找到相关记忆 ID
+  → 找到相关记忆 ID（从完整分页结果中筛选）
   → delete_memory(memory_id="xxx")
 
 步骤 4: 确认同步
@@ -125,8 +128,63 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
     "filters": {
       "project": "项目名称"
     },
-    "limit": 10
+    "limit": 20
   }
+}
+```
+
+**分页参数说明**：
+
+- `limit`：每页返回的最大结果数，默认 20
+- `offset`：跳过的结果数，用于分页，默认 0
+- 返回结果中包含 `has_more` 字段，表示是否还有更多结果
+
+**分页返回格式**：
+
+```json
+{
+  "results": [...],
+  "count": 20,
+  "offset": 0,
+  "limit": 20,
+  "has_more": true
+}
+```
+
+**⚠️ 获取完整结果的重要规则**：
+
+当需要查找所有相关记忆时（如：更新/删除前确认、全面了解项目信息），**必须循环分页直到 `has_more=false`**：
+
+```
+步骤 1: 首次搜索
+→ search_memories(query="...", filters={...}, limit=20, offset=0)
+→ 检查返回的 has_more
+
+步骤 2: 如果 has_more=true，继续获取下一页
+→ search_memories(query="...", filters={...}, limit=20, offset=20)
+→ 累积结果，再次检查 has_more
+
+步骤 3: 重复直到 has_more=false
+→ 合并所有页的结果
+```
+
+**分页查询示例**：
+
+```json
+// 第一页
+{
+  "query": "核心功能",
+  "filters": {"project": "mcp-ai-memory"},
+  "limit": 20,
+  "offset": 0
+}
+
+// 第二页（如果 has_more=true）
+{
+  "query": "核心功能",
+  "filters": {"project": "mcp-ai-memory"},
+  "limit": 20,
+  "offset": 20
 }
 ```
 
@@ -146,14 +204,14 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 {
   "query": "核心功能",
   "filters": {"project": "mcp-ai-memory"},
-  "limit": 10
+  "limit": 20
 }
 
 // 搜索多个项目的 API 设计
 {
   "query": "API 接口设计",
   "filters": {"project": {"in": ["mcp-ai-memory", "my-project"]}},
-  "limit": 10
+  "limit": 20
 }
 ```
 
@@ -163,8 +221,11 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 // ❌ 缺少 filters，会搜到所有项目的记忆
 {
   "query": "核心功能",
-  "limit": 10
+  "limit": 20
 }
+
+// ❌ 只取第一页就停止，可能遗漏重要记忆
+// 当 has_more=true 时，必须继续分页查询！
 ```
 
 ### 确定项目名的策略
@@ -283,3 +344,4 @@ description: 自动同步项目知识到长期记忆系统。当用户询问项�
 5. **用户确认**：重要操作前可询问用户确认
 6. **使用 filters 过滤项目**：搜索时必须使用 `filters={"project": "项目名"}` 过滤，确保只返回目标项目的记忆
 7. **不确定时主动询问**：当无法确定要搜索哪个项目时，必须先询问用户项目名，不要猜测
+8. **完整分页查询**：搜索时必须检查 `has_more` 字段，如果为 `true` 则继续分页查询（offset += limit），直到获取所有相关结果。不要只取第一页就停止！
