@@ -416,11 +416,31 @@ class QdrantFilterTest:
                 print_result(name, False, result.get("error", "未知错误")[:80])
     
     def cleanup(self):
-        """清理测试数据。"""
+        """清理测试数据。
+        
+        ⚠️ 注意: mem0 1.0.x 有 bug，delete_all 会删除所有用户的记忆！
+        所以这里改用逐条删除的方式清理测试数据。
+        """
         print_section("清理测试数据")
         try:
-            self.client.delete_all(user_id=self.test_user_id)
-            print_result("删除测试记忆", True)
+            # 获取测试用户的所有记忆
+            memories = self.client.get_all(user_id=self.test_user_id)
+            if not memories:
+                print_result("删除测试记忆", True, "没有需要删除的记忆")
+                return
+            
+            # 逐条删除
+            deleted_count = 0
+            for mem in memories:
+                mem_id = mem.get("id")
+                if mem_id:
+                    try:
+                        self.client.delete(memory_id=mem_id)
+                        deleted_count += 1
+                    except Exception as e:
+                        print_result(f"删除记忆 {mem_id}", False, str(e))
+            
+            print_result("删除测试记忆", True, f"已删除 {deleted_count}/{len(memories)} 条")
         except Exception as e:
             print_result("删除测试记忆", False, str(e))
     
