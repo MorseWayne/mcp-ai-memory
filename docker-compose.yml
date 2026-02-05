@@ -8,6 +8,7 @@ services:
       - "6334:6334"
     volumes:
       - qdrant-storage:/qdrant/storage
+      - qdrant-snapshots:/qdrant/snapshots
     environment:
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
     restart: unless-stopped
@@ -17,6 +18,79 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # Qdrant 自动快照服务
+  qdrant-backup:
+    image: alpine:latest
+    container_name: qdrant-backup
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - qdrant-snapshots:/snapshots
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-mem0_memories}
+      - BACKUP_INTERVAL_HOURS=${BACKUP_INTERVAL_HOURS:-6}
+      - BACKUP_RETAIN_COUNT=${BACKUP_RETAIN_COUNT:-7}
+      # 代理配置（用于 apk 安装软件包，将 127.0.0.1 替换为 host.docker.internal）
+      - HTTP_PROXY=${CONTAINER_HTTP_PROXY:-}
+      - HTTPS_PROXY=${CONTAINER_HTTPS_PROXY:-}
+      - http_proxy=${CONTAINER_HTTP_PROXY:-}
+      - https_proxy=${CONTAINER_HTTPS_PROXY:-}
+      - NO_PROXY=qdrant,localhost,127.0.0.1,host.docker.internal
+      - no_proxy=qdrant,localhost,127.0.0.1,host.docker.internal
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        apk add --no-cache curl jq
+        echo "Qdrant 自动快照服务已启动"
+        echo "  - 备份间隔: $${BACKUP_INTERVAL_HOURS} 小时"
+        echo "  - 保留数量: $${BACKUP_RETAIN_COUNT} 个"
+        
+        while true; do
+          echo "[`date '+%Y-%m-%d %H:%M:%S'`] 开始创建快照..."
+          
+          # 获取所有 collections
+          COLLECTIONS=$$(curl -s "http://$${QDRANT_HOST}:$${QDRANT_PORT}/collections" | jq -r '.result.collections[].name' 2>/dev/null)
+          
+          if [ -z "$$COLLECTIONS" ]; then
+            echo "  警告: 未找到任何 collection"
+          else
+            for COLL in $$COLLECTIONS; do
+              echo "  正在备份 collection: $$COLL"
+              
+              # 创建快照
+              RESULT=$$(curl -s -X POST "http://$${QDRANT_HOST}:$${QDRANT_PORT}/collections/$$COLL/snapshots")
+              SNAPSHOT_NAME=$$(echo "$$RESULT" | jq -r '.result.name' 2>/dev/null)
+              
+              if [ -n "$$SNAPSHOT_NAME" ] && [ "$$SNAPSHOT_NAME" != "null" ]; then
+                echo "    ✅ 快照创建成功: $$SNAPSHOT_NAME"
+                
+                # 清理旧快照 (保留最近 N 个)
+                SNAPSHOTS=$$(curl -s "http://$${QDRANT_HOST}:$${QDRANT_PORT}/collections/$$COLL/snapshots" | jq -r '.result[].name' 2>/dev/null | sort -r)
+                COUNT=0
+                for SNAP in $$SNAPSHOTS; do
+                  COUNT=$$((COUNT + 1))
+                  if [ $$COUNT -gt $${BACKUP_RETAIN_COUNT} ]; then
+                    echo "    🗑️ 删除旧快照: $$SNAP"
+                    curl -s -X DELETE "http://$${QDRANT_HOST}:$${QDRANT_PORT}/collections/$$COLL/snapshots/$$SNAP" > /dev/null
+                  fi
+                done
+              else
+                echo "    ❌ 快照创建失败: $$RESULT"
+              fi
+            done
+          fi
+          
+          echo "[`date '+%Y-%m-%d %H:%M:%S'`] 快照完成，等待 $${BACKUP_INTERVAL_HOURS} 小时..."
+          sleep $${BACKUP_INTERVAL_HOURS}h
+        done
+    restart: unless-stopped
 
   # MCP AI Memory 服务
   mcp-ai-memory:
@@ -77,4 +151,6 @@ services:
 
 volumes:
   qdrant-storage:
+    driver: local
+  qdrant-snapshots:
     driver: local

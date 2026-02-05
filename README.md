@@ -312,6 +312,7 @@ QDRANT_COLLECTION=mem0_memories
 ### Streamable HTTP 模式（推荐用于持久服务）
 
 Streamable HTTP 是 MCP 规范推荐的传输方式，优点：
+
 - **无状态连接**：服务重启后客户端自动恢复，不会出现"未初始化"错误
 - **更好的兼容性**：适用于各种网络环境和代理
 
@@ -583,6 +584,8 @@ CUSTOM_FACT_EXTRACTION_PROMPT="Your custom prompt here..."
 | `FACT_EXTRACTION_PROMPT_TYPE` | Prompt 类型 (default/personal) | `default` |
 | `CUSTOM_FACT_EXTRACTION_PROMPT_FILE` | 自定义 Prompt 文件路径 | - |
 | `CUSTOM_FACT_EXTRACTION_PROMPT` | 直接设置自定义 Prompt | - |
+| `BACKUP_INTERVAL_HOURS` | 自动备份间隔（小时，仅 Docker） | `6` |
+| `BACKUP_RETAIN_COUNT` | 保留快照数量（仅 Docker） | `7` |
 
 ## 完全本地部署示例
 
@@ -669,6 +672,106 @@ CUSTOM_FACT_EXTRACTION_PROMPT="Your custom prompt here..."
 # 启动所有服务
 docker compose up -d
 ```
+
+## 数据备份与恢复
+
+使用 Qdrant 服务器模式时，建议启用自动快照功能以防止数据丢失。
+
+### 自动备份（Docker Compose）
+
+项目的 `docker-compose.yml` 已包含自动备份服务 `qdrant-backup`，默认配置：
+
+- **备份间隔**: 每 6 小时创建一次快照
+- **保留数量**: 最近 7 个快照
+
+启动服务后自动生效：
+
+```bash
+docker compose up -d
+```
+
+可通过环境变量自定义备份策略：
+
+```env
+BACKUP_INTERVAL_HOURS=6        # 备份间隔（小时）
+BACKUP_RETAIN_COUNT=7          # 保留快照数量
+```
+
+### 手动创建快照
+
+```bash
+# 创建快照
+curl -X POST "http://localhost:6333/collections/你的collection名/snapshots"
+
+# 查看所有快照
+curl "http://localhost:6333/collections/你的collection名/snapshots"
+```
+
+**示例输出**：
+
+```json
+{
+  "result": [
+    {
+      "name": "legoutech_ai_memory-8109846939920624-2026-02-05-09-42-43.snapshot",
+      "creation_time": "2026-02-05T09:42:43",
+      "size": 933376
+    }
+  ],
+  "status": "ok"
+}
+```
+
+### 从快照恢复数据
+
+> ⚠️ **警告**：恢复操作会覆盖当前 collection 的所有数据！
+
+#### 方式一：从本地快照恢复
+
+```bash
+# 1. 查看可用快照
+curl "http://localhost:6333/collections/你的collection名/snapshots"
+
+# 2. 从快照恢复（替换为实际的快照文件名）
+curl -X PUT "http://localhost:6333/collections/你的collection名/snapshots/recover" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "location": "file:///qdrant/snapshots/你的collection名/快照文件名.snapshot"
+  }'
+```
+
+#### 方式二：从远程 URL 恢复
+
+```bash
+curl -X PUT "http://localhost:6333/collections/你的collection名/snapshots/recover" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "location": "https://your-backup-server.com/snapshots/backup.snapshot"
+  }'
+```
+
+### 删除旧快照
+
+```bash
+curl -X DELETE "http://localhost:6333/collections/你的collection名/snapshots/快照文件名.snapshot"
+```
+
+### 导出快照到本地
+
+如果需要将快照下载到本地备份：
+
+```bash
+# 下载快照文件
+curl -o backup.snapshot \
+  "http://localhost:6333/collections/你的collection名/snapshots/快照文件名.snapshot"
+```
+
+### 最佳实践
+
+1. **生产环境务必启用自动备份**：使用 `docker compose up -d` 会自动启动备份服务
+2. **定期验证备份**：偶尔检查快照列表确保备份正常执行
+3. **重要操作前手动备份**：在批量删除或迁移前，先手动创建快照
+4. **异地备份**：定期将快照文件下载到其他存储位置
 
 ## 故障排查
 
