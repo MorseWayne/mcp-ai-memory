@@ -1,3 +1,10 @@
+---
+name: project-memory-sync
+description: 自动同步项目知识到长期记忆系统。当用户询问项目功能/设计，或修改了代码、接口、文档时，自动使用 MCP 记忆服务管理相关记忆。
+version: 1.1.0
+category: memory-management
+---
+
 # AI 助手项目记忆同步指南 (Universal Agent Memory Skill)
 
 本指南旨在指导 AI 助手（如 Claude, Cursor, Windsurf 等）如何高效、准确地利用 `mcp-ai-memory` 服务管理项目的长期记忆。
