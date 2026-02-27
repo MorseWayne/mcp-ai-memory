@@ -277,7 +277,12 @@ def create_server() -> FastMCP:
             return _safe_json({"error": str(e)})
 
     @server.tool(
-        description="Semantic search across existing memories. Supports pagination via limit/offset. Use has_more to check if more results exist."
+        description="""Semantic search across existing memories. Supports pagination via limit/offset.
+        
+        Filters usage:
+        - Exact match: {"project": "my-project"}
+        - Avoid complex dict operators like {"project": {"in": [...]}} as they may fail validation.
+        """
     )
     async def search_memories(
         query: Annotated[str, Field(description="Natural language description of what to find.")],
@@ -288,9 +293,17 @@ def create_server() -> FastMCP:
             Optional[Dict[str, Any]],
             Field(
                 default=None,
-                description="Metadata filters for search. Common usage: {'project': 'project-name'} to filter by project. Supports operators: exact match {'key': 'value'}, equals {'key': {'eq': 'value'}}, not equals {'key': {'ne': 'value'}}, in list {'key': {'in': ['val1', 'val2']}}.",
+                description="Metadata filters for search. Use simple key-value pairs like {'project': 'name'}.",
             ),
         ] = None,
+        threshold: Annotated[
+            Optional[float],
+            Field(default=None, description="Similarity threshold (0.0 to 1.0). Higher means more relevant."),
+        ] = None,
+        rerank: Annotated[
+            bool,
+            Field(default=True, description="Whether to rerank results for better accuracy. Default is True."),
+        ] = True,
         limit: Annotated[int, Field(default=20, description="Maximum number of results per page. Default 20.")] = 20,
         offset: Annotated[int, Field(default=0, description="Number of results to skip for pagination. Default 0.")] = 0,
         ctx: Optional[Context] = None,
@@ -299,15 +312,18 @@ def create_server() -> FastMCP:
         
         Returns:
             JSON with results, count, offset, limit, and has_more flag.
-            When has_more is True, call again with offset += limit to get next page.
         """
         try:
             client = _get_client(ctx)
-            # Fetch limit + 1 to detect if more results exist
+            # Fetch limit + offset + 1 to detect if more results exist
             fetch_limit = limit + offset + 1
             kwargs = _build_scope_kwargs(user_id, agent_id, run_id, limit=fetch_limit)
             if filters:
                 kwargs["filters"] = filters
+            if threshold is not None:
+                kwargs["threshold"] = threshold
+            kwargs["rerank"] = rerank
+
             # Run blocking call in thread pool for concurrency support
             result = await asyncio.to_thread(client.search, query, **kwargs)
             all_memories = _extract_memories(result)
@@ -333,23 +349,40 @@ def create_server() -> FastMCP:
             return _safe_json({"error": str(e)})
 
     @server.tool(
-        description="List all memories with optional filters. Use for browsing stored memories."
+        description="List all memories with optional filters. Supports pagination via limit and offset."
     )
     async def get_memories(
         user_id: Annotated[Optional[str], Field(default=None, description="Filter by user ID.")] = None,
         agent_id: Annotated[Optional[str], Field(default=None, description="Filter by agent ID.")] = None,
         run_id: Annotated[Optional[str], Field(default=None, description="Filter by run ID.")] = None,
+        limit: Annotated[int, Field(default=20, description="Maximum number of results per page. Default 20.")] = 20,
+        offset: Annotated[int, Field(default=0, description="Number of results to skip for pagination. Default 0.")] = 0,
         ctx: Optional[Context] = None,
     ) -> str:
-        """List memories via structured filters."""
+        """List memories via structured filters with pagination support."""
         try:
             client = _get_client(ctx)
-            kwargs = _build_scope_kwargs(user_id, agent_id, run_id)
+            # Fetch limit + offset + 1 to detect if more results exist
+            fetch_limit = limit + offset + 1
+            kwargs = _build_scope_kwargs(user_id, agent_id, run_id, limit=fetch_limit)
+            
             # Run blocking call in thread pool for concurrency support
             result = await asyncio.to_thread(client.get_all, **kwargs)
-            memories = _extract_memories(result)
-            logger.info(f"Retrieved {len(memories)} memories for user={kwargs.get('user_id')}")
-            return _safe_json({"results": memories, "count": len(memories)})
+            all_memories = _extract_memories(result)
+            
+            # Apply pagination
+            total_available = len(all_memories)
+            paginated = all_memories[offset:offset + limit]
+            has_more = total_available > offset + limit
+
+            logger.info(f"Retrieved {len(paginated)} memories for user={kwargs.get('user_id')} (offset={offset}, has_more={has_more})")
+            return _safe_json({
+                "results": paginated, 
+                "count": len(paginated),
+                "offset": offset,
+                "limit": limit,
+                "has_more": has_more
+            })
         except Exception as e:
             logger.error(f"Error getting memories: {e}", exc_info=True)
             return _safe_json({"error": str(e)})

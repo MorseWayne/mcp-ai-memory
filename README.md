@@ -31,7 +31,7 @@
 
 ### search_memories
 
-语义搜索现有记忆，支持分页。
+语义搜索现有记忆，支持分页和相关性过滤。
 
 | 参数 | 类型 | 必填 | 描述 |
 | --- | --- | --- | --- |
@@ -40,32 +40,35 @@
 | `agent_id` | string | - | 按 Agent ID 过滤 |
 | `run_id` | string | - | 按运行 ID 过滤 |
 | `filters` | object | - | 元数据过滤器，如 `{"project": "项目名"}` |
+| `threshold` | float | - | 相似度阈值 (0.0-1.0)，越高越精确 |
+| `rerank` | bool | - | 是否开启重排序，默认 true |
 | `limit` | int | - | 每页最大返回结果数，默认 20 |
 | `offset` | int | - | 跳过的结果数，用于分页，默认 0 |
 
-**返回格式**：
-
-```json
-{
-  "results": [...],
-  "count": 20,
-  "offset": 0,
-  "limit": 20,
-  "has_more": true
-}
-```
-
-当 `has_more` 为 `true` 时，可通过 `offset += limit` 获取下一页。
-
 ### get_memories
 
-列出所有记忆（支持过滤）。
+列出所有记忆（支持过滤和分页）。
 
 | 参数 | 类型 | 必填 | 描述 |
 | --- | --- | --- | --- |
 | `user_id` | string | - | 按用户 ID 过滤 |
 | `agent_id` | string | - | 按 Agent ID 过滤 |
 | `run_id` | string | - | 按运行 ID 过滤 |
+| `limit` | int | - | 每页最大返回结果数，默认 20 |
+| `offset` | int | - | 跳过的结果数，默认 0 |
+
+---
+
+## Cursor Agent Skill（推荐）
+
+本项目提供了一个配套的 Cursor Agent Skill，能够让 AI 助手自动管理项目知识。
+
+- **自动同步**：识别代码变更并自动更新长期记忆。
+- **项目隔离**：通过 `filters` 自动隔离不同项目的记忆。
+- **智能检索**：在回答项目问题前自动搜索相关记忆。
+
+详情请参考 [SKILL.md](SKILL.md)。
+
 
 ### get_memory
 
