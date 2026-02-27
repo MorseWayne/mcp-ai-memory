@@ -237,19 +237,37 @@ def create_server() -> FastMCP:
             # Analyze the result for debugging
             _analyze_add_result(result, text, effective_user_id)
             
-            # Count actual memories added
-            added_count = 0
+            # Extract summary for better UI/AI consumption
+            summary = []
             if isinstance(result, dict) and "results" in result:
-                added_count = sum(
-                    1 for r in result.get("results", []) 
-                    if r.get("event") == "ADD"
-                )
+                for r in result.get("results", []):
+                    event = r.get("event")
+                    mem_text = r.get("memory") or r.get("text")
+                    if event == "ADD":
+                        summary.append(f"Added: {mem_text}")
+                    elif event == "UPDATE":
+                        summary.append(f"Updated: {mem_text}")
+                    elif event == "DELETE":
+                        summary.append(f"Deleted (obsolete): {mem_text}")
+            
+            if not summary:
+                # Check if it was rejected or already exists
+                if isinstance(result, dict) and any(r.get("event") == "NONE" for r in result.get("results", [])):
+                    summary.append("No changes: Information already exists or was filtered by LLM.")
+                else:
+                    summary.append("No memories were extracted from the input.")
+
+            response_data = {
+                "summary": "\n".join(summary),
+                "details": result,
+                "user_id": effective_user_id
+            }
             
             logger.info(
                 f"Memory operation completed for user={effective_user_id}, "
-                f"added={added_count} memories"
+                f"summary={response_data['summary']}"
             )
-            return _safe_json(result)
+            return _safe_json(response_data)
         except Exception as e:
             logger.error(f"Error adding memory: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
@@ -381,40 +399,49 @@ def create_server() -> FastMCP:
             logger.error(f"Error deleting memory {memory_id}: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
-    @server.tool(description="Bulk delete memories by scope. WARNING: Due to a bug in mem0 1.0.x, this may delete ALL memories regardless of filters! Use with extreme caution.")
+    @server.tool(
+        description="Bulk delete memories by scope (user, agent, or run). This implementation is safe and only deletes memories within the specified scope."
+    )
     async def delete_all_memories(
         user_id: Annotated[Optional[str], Field(default=None, description="User scope to delete.")] = None,
         agent_id: Annotated[Optional[str], Field(default=None, description="Agent scope to delete.")] = None,
         run_id: Annotated[Optional[str], Field(default=None, description="Run scope to delete.")] = None,
         ctx: Optional[Context] = None,
     ) -> str:
-        """Delete multiple memories by scope.
+        """Delete multiple memories by scope safely.
         
-        WARNING: Due to a known bug in mem0 1.0.x (see GitHub issue #3746),
-        delete_all may ignore user_id/agent_id/run_id filters and delete ALL memories!
-        Use delete_memory for safer individual deletions.
+        To prevent the known bug in mem0 where delete_all(filters) wipes the entire store,
+        this tool fetches IDs first and deletes them one-by-one.
         """
-        # Log warning about the known bug
-        logger.warning(
-            "delete_all_memories called. Due to mem0 1.0.x bug, this may delete ALL memories! "
-            f"Requested filters: user_id={user_id}, agent_id={agent_id}, run_id={run_id}"
-        )
-        
         try:
             client = _get_client(ctx)
-            kwargs: Dict[str, Any] = {}
-            if user_id:
-                kwargs["user_id"] = user_id
-            if agent_id:
-                kwargs["agent_id"] = agent_id
-            if run_id:
-                kwargs["run_id"] = run_id
-            # Run blocking call in thread pool for concurrency support
-            result = await asyncio.to_thread(client.delete_all, **kwargs)
-            logger.info("Bulk delete executed")
-            return _safe_json(result)
+            # 1. Fetch all memories for the given scope
+            kwargs = _build_scope_kwargs(user_id, agent_id, run_id)
+            logger.info(f"Safe bulk delete requested for scope: {kwargs}")
+            
+            # Use to_thread for blocking call
+            get_res = await asyncio.to_thread(client.get_all, **kwargs)
+            memories = _extract_memories(get_res)
+            
+            if not memories:
+                logger.info("No memories found in the specified scope to delete.")
+                return _safe_json({"message": "No memories found in the specified scope.", "deleted_count": 0})
+            
+            # 2. Delete each memory individually to ensure safety
+            deleted_count = 0
+            for mem in memories:
+                mem_id = mem.get("id")
+                if mem_id:
+                    await asyncio.to_thread(client.delete, mem_id)
+                    deleted_count += 1
+            
+            logger.info(f"Successfully deleted {deleted_count} memories safely.")
+            return _safe_json({
+                "message": f"Successfully deleted {deleted_count} memories.",
+                "deleted_count": deleted_count
+            })
         except Exception as e:
-            logger.error(f"Error bulk deleting memories: {e}", exc_info=True)
+            logger.error(f"Error in safe bulk delete: {e}", exc_info=True)
             return _safe_json({"error": str(e)})
 
     @server.tool(description="View change history for a memory.")
