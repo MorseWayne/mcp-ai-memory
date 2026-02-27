@@ -59,15 +59,17 @@
 
 ---
 
-## Cursor Agent Skill（推荐）
+## AI Agent 智能同步指南 (Universal Skill)
 
-本项目提供了一个配套的 Cursor Agent Skill，能够让 AI 助手自动管理项目知识。
+本项目提供了一个通用的 **AI Agent Skill (智能同步指南)**，能够引导各种支持 MCP 的 AI 助手（如 Claude Desktop, Cursor, Windsurf, Roo Code 等）自动管理项目知识。
 
-- **自动同步**：识别代码变更并自动更新长期记忆。
-- **项目隔离**：通过 `filters` 自动隔离不同项目的记忆。
-- **智能检索**：在回答项目问题前自动搜索相关记忆。
+- **通用能力**：不局限于特定编辑器，支持所有主流 AI 助手。
+- **自动同步**：识别代码变更、架构调整并自动维护长期记忆。
+- **项目隔离**：利用 `filters` 自动隔离不同项目的知识点。
+- **高级检索**：结合 `threshold` 和 `rerank` 提升知识获取的准确度。
 
-详情请参考 [SKILL.md](SKILL.md)。
+详情及配置建议请参考 [SKILL.md](SKILL.md)。
+
 
 
 ### get_memory
