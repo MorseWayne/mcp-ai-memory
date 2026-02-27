@@ -9,6 +9,7 @@ import os
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -20,6 +21,9 @@ from .config import create_mem0_client, DEFAULT_USER_ID
 from .schemas import ToolMessage
 
 load_dotenv()
+repo_dotenv = Path(__file__).resolve().parents[2] / ".env"
+if repo_dotenv.exists():
+    load_dotenv(repo_dotenv, override=False)
 
 # Configure logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
