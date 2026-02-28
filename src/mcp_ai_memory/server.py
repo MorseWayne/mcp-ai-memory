@@ -333,12 +333,23 @@ def create_server() -> FastMCP:
             paginated = all_memories[offset:offset + limit]
             has_more = total_available > offset + limit
             
+            # Extract scores and summarize for the caller
+            summary = []
+            for idx, m in enumerate(paginated):
+                score = m.get("score", "N/A")
+                text = m.get("memory", m.get("text", "N/A"))
+                summary.append(f"[{idx}] (Score: {score}) {text[:100]}...")
+
+            if not summary:
+                summary.append("No relevant memories found.")
+
             logger.info(
                 f"Search returned {len(paginated)} results (offset={offset}, limit={limit}, "
                 f"has_more={has_more}) for query: {query[:50]}..."
             )
             return _safe_json({
                 "results": paginated,
+                "summary": "\n".join(summary),
                 "count": len(paginated),
                 "offset": offset,
                 "limit": limit,
