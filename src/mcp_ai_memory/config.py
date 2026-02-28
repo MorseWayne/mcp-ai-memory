@@ -6,9 +6,38 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
+import openai
 from mem0 import Memory
 
 logger = logging.getLogger("mcp_ai_memory")
+
+
+# Monkeypatch OpenAI clients to respect custom timeout
+# This is required because mem0 doesn't pass timeout to the underlying OpenAI client
+def _patch_openai_timeout():
+    """Patch OpenAI client constructors to use configured timeout by default."""
+    try:
+        timeout = get_env_float("LLM_TIMEOUT", None) or get_env_float("HTTP_TIMEOUT", None) or get_env_float("CONNECTION_TIMEOUT", 60.0)
+        
+        # Patch sync client
+        original_init = openai.OpenAI.__init__
+        def patched_init(self, *args, **kwargs):
+            if "timeout" not in kwargs:
+                kwargs["timeout"] = timeout
+            original_init(self, *args, **kwargs)
+        openai.OpenAI.__init__ = patched_init
+        
+        # Patch async client
+        original_async_init = openai.AsyncOpenAI.__init__
+        def patched_async_init(self, *args, **kwargs):
+            if "timeout" not in kwargs:
+                kwargs["timeout"] = timeout
+            original_async_init(self, *args, **kwargs)
+        openai.AsyncOpenAI.__init__ = patched_async_init
+        
+        logger.info(f"OpenAI clients patched with default timeout: {timeout}s")
+    except Exception as e:
+        logger.warning(f"Failed to patch OpenAI timeout: {e}")
 
 
 def get_env(key: str, default: Optional[str] = None) -> Optional[str]:
@@ -48,6 +77,10 @@ def get_env_float(key: str, default: float) -> float:
         return default
 
 
+# Apply the patch after helper functions are defined
+_patch_openai_timeout()
+
+
 def _build_llm_config() -> Dict[str, Any]:
     """Build LLM configuration from environment variables."""
     provider = get_env("LLM_PROVIDER", "openai")
@@ -56,6 +89,7 @@ def _build_llm_config() -> Dict[str, Any]:
     base_url = get_env("LLM_BASE_URL")
     temperature = get_env_float("LLM_TEMPERATURE", 0.2)
     max_tokens = get_env_int("LLM_MAX_TOKENS", 2000)
+    timeout = get_env_float("LLM_TIMEOUT", None) or get_env_float("HTTP_TIMEOUT", None) or get_env_float("CONNECTION_TIMEOUT", 30.0)
 
     config: Dict[str, Any] = {
         "provider": provider,
@@ -138,6 +172,7 @@ def _build_embedder_config() -> Dict[str, Any]:
     # Fall back to LLM credentials if embedding-specific ones are not set
     api_key = get_env("EMBEDDING_API_KEY") or get_env("LLM_API_KEY")
     base_url = get_env("EMBEDDING_BASE_URL") or get_env("LLM_BASE_URL")
+    timeout = get_env_float("EMBEDDING_TIMEOUT", None) or get_env_float("HTTP_TIMEOUT", None) or get_env_float("CONNECTION_TIMEOUT", 30.0)
 
     config: Dict[str, Any] = {
         "provider": provider,

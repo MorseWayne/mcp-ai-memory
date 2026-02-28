@@ -126,6 +126,12 @@ services:
       # no_proxy: ${CONTAINER_NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,qdrant,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
       # 禁用 Posthog 遥测
       POSTHOG_DISABLED: "true"
+      # 请求超时设置
+      HTTP_TIMEOUT: ${HTTP_TIMEOUT:-60}
+      # 代理配置 (可选)
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,qdrant}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY}
